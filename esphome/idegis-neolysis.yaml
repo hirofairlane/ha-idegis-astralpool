@@ -1,0 +1,374 @@
+# ESPHome — Idegis Neolysis Neo2-24PH/S por Modbus RTU
+#
+# ⚠️ ESQUELETO INICIAL — NO PROBADO TODAVÍA EN HARDWARE.
+# Pendiente de:
+#  - Confirmar adaptador RS485 (auto-direction vs MAX485 con DE/RE manual).
+#  - Confirmar dirección esclavo (default 2) y baudios (default 9600 8E1).
+#  - Validar bitmap de capacidades (holding 0x06) en el equipo real.
+#
+# Esto es Fase 1 (solo lectura). Setpoints editables van en una iteración
+# siguiente, una vez validadas las lecturas.
+
+substitutions:
+  device_name: piscina-idegis
+  friendly_name: "Piscina Idegis Neolysis"
+  modbus_slave_addr: "2"
+
+esphome:
+  name: ${device_name}
+  friendly_name: ${friendly_name}
+
+esp32:
+  board: esp32dev
+  framework:
+    type: arduino
+
+logger:
+  level: INFO
+  baud_rate: 0  # libera UART0 para flasheo, logs por API
+
+api:
+  encryption:
+    key: !secret api_encryption_key
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  fast_connect: true
+
+# ── Bus Modbus RTU ─────────────────────────────────────────────────────────────
+# UART2 ESP32: GPIO17 TX, GPIO16 RX
+uart:
+  id: mod_bus
+  tx_pin: 17
+  rx_pin: 16
+  baud_rate: 9600
+  parity: EVEN
+  stop_bits: 1
+
+modbus:
+  id: modbus_rtu
+  uart_id: mod_bus
+  # flow_control_pin: GPIO4   # ← descomentar si usas MAX485 con DE/RE manual
+  send_wait_time: 200ms
+
+modbus_controller:
+  - id: idegis
+    address: ${modbus_slave_addr}
+    modbus_id: modbus_rtu
+    setup_priority: -10
+    update_interval: 10s
+    command_throttle: 50ms
+
+# ── Sensores numéricos (input registers, función 0x04) ────────────────────────
+sensor:
+  - platform: modbus_controller
+    modbus_controller_id: idegis
+    name: "pH"
+    id: piscina_ph
+    register_type: read     # function 0x04 = input register
+    address: 0x51
+    value_type: U_WORD
+    unit_of_measurement: "pH"
+    accuracy_decimals: 2
+    filters:
+      - multiply: 0.01
+
+  - platform: modbus_controller
+    modbus_controller_id: idegis
+    name: "ORP"
+    id: piscina_orp
+    register_type: read
+    address: 0x81
+    value_type: U_WORD
+    unit_of_measurement: "mV"
+    accuracy_decimals: 0
+    device_class: voltage
+
+  - platform: modbus_controller
+    modbus_controller_id: idegis
+    name: "Temperatura agua"
+    id: piscina_temp
+    register_type: read
+    address: 0xB1
+    value_type: U_WORD
+    unit_of_measurement: "°C"
+    accuracy_decimals: 1
+    device_class: temperature
+    filters:
+      - multiply: 0.1
+
+  - platform: modbus_controller
+    modbus_controller_id: idegis
+    name: "Salinidad"
+    id: piscina_salinidad
+    register_type: read
+    address: 0xC1
+    value_type: U_WORD
+    unit_of_measurement: "g/L"
+    accuracy_decimals: 2
+    filters:
+      - multiply: 0.01
+
+  # Electrólisis ───────────────────────────────────────────────────────────────
+  - platform: modbus_controller
+    modbus_controller_id: idegis
+    name: "Producción setpoint actual"
+    register_type: read
+    address: 0x41
+    value_type: U_WORD
+    unit_of_measurement: "%"
+
+  - platform: modbus_controller
+    modbus_controller_id: idegis
+    name: "Producción instantánea"
+    register_type: read
+    address: 0x42
+    value_type: U_WORD
+    unit_of_measurement: "%"
+
+  - platform: modbus_controller
+    modbus_controller_id: idegis
+    name: "Corriente electrodos"
+    register_type: read
+    address: 0x43
+    value_type: U_WORD
+    unit_of_measurement: "A"
+    accuracy_decimals: 2
+    device_class: current
+    filters:
+      - multiply: 0.01
+
+  - platform: modbus_controller
+    modbus_controller_id: idegis
+    name: "Tensión electrodos"
+    register_type: read
+    address: 0x44
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 2
+    device_class: voltage
+    filters:
+      - multiply: 0.01
+
+  - platform: modbus_controller
+    modbus_controller_id: idegis
+    name: "Producción g/h"
+    register_type: read
+    address: 0x45
+    value_type: U_WORD
+    unit_of_measurement: "g/h"
+
+  - platform: modbus_controller
+    modbus_controller_id: idegis
+    name: "Producción hoy"
+    register_type: read
+    address: 0x46
+    value_type: U_WORD
+    unit_of_measurement: "g"
+    state_class: total_increasing
+    update_interval: 60s
+
+  - platform: modbus_controller
+    modbus_controller_id: idegis
+    name: "Minutos electrólisis hoy"
+    register_type: read
+    address: 0x47
+    value_type: U_WORD
+    unit_of_measurement: "min"
+    state_class: total_increasing
+    update_interval: 60s
+
+  - platform: modbus_controller
+    modbus_controller_id: idegis
+    name: "Horas totales electrólisis"
+    register_type: read
+    address: 0x48
+    value_type: U_DWORD_R   # uint32 little-word (lsb,msb)
+    unit_of_measurement: "h"
+    state_class: total_increasing
+    update_interval: 300s
+
+  # Bomba pH ───────────────────────────────────────────────────────────────────
+  - platform: modbus_controller
+    modbus_controller_id: idegis
+    name: "Bomba pH velocidad"
+    register_type: read
+    address: 0x58
+    value_type: U_WORD
+    unit_of_measurement: "%"
+
+  - platform: modbus_controller
+    modbus_controller_id: idegis
+    name: "Bomba pH dosis hoy"
+    register_type: read
+    address: 0x59
+    value_type: U_WORD
+    unit_of_measurement: "s"
+    state_class: total_increasing
+    update_interval: 60s
+
+  - platform: modbus_controller
+    modbus_controller_id: idegis
+    name: "Horas totales bomba pH"
+    register_type: read
+    address: 0x5A
+    value_type: U_WORD
+    unit_of_measurement: "h"
+    state_class: total_increasing
+    update_interval: 300s
+
+# ── Binary sensors (bits de status y alarmas) ─────────────────────────────────
+binary_sensor:
+  - platform: modbus_controller
+    modbus_controller_id: idegis
+    name: "Alarma global"
+    register_type: read
+    address: 0x20
+    bitmask: 0x0001       # bit 0 = 0x200
+    device_class: problem
+
+  - platform: modbus_controller
+    modbus_controller_id: idegis
+    name: "Tratamiento parado"
+    register_type: read
+    address: 0x20
+    bitmask: 0x0004       # bit 2
+
+  - platform: modbus_controller
+    modbus_controller_id: idegis
+    name: "Flow alarm"
+    register_type: read
+    address: 0x24
+    bitmask: 0x0001
+    device_class: problem
+
+  - platform: modbus_controller
+    modbus_controller_id: idegis
+    name: "pH bajo"
+    register_type: read
+    address: 0x26
+    bitmask: 0x0001
+    device_class: problem
+
+  - platform: modbus_controller
+    modbus_controller_id: idegis
+    name: "pH alto"
+    register_type: read
+    address: 0x26
+    bitmask: 0x0002
+    device_class: problem
+
+  - platform: modbus_controller
+    modbus_controller_id: idegis
+    name: "Garrafa pH vacía"
+    register_type: read
+    address: 0x26
+    bitmask: 0x0020       # bit 5
+    device_class: problem
+
+  - platform: modbus_controller
+    modbus_controller_id: idegis
+    name: "Pumpstop pH"
+    register_type: read
+    address: 0x26
+    bitmask: 0x0040       # bit 6
+    device_class: problem
+
+  - platform: modbus_controller
+    modbus_controller_id: idegis
+    name: "Fusible bomba pH"
+    register_type: read
+    address: 0x26
+    bitmask: 0x0080       # bit 7
+    device_class: problem
+
+  - platform: modbus_controller
+    modbus_controller_id: idegis
+    name: "Temperatura baja"
+    register_type: read
+    address: 0x28
+    bitmask: 0x0001
+
+  - platform: modbus_controller
+    modbus_controller_id: idegis
+    name: "Temperatura alta"
+    register_type: read
+    address: 0x28
+    bitmask: 0x0002
+    device_class: problem
+
+  - platform: modbus_controller
+    modbus_controller_id: idegis
+    name: "Sal baja"
+    register_type: read
+    address: 0x29
+    bitmask: 0x0001
+    device_class: problem
+
+  - platform: modbus_controller
+    modbus_controller_id: idegis
+    name: "Sal alta"
+    register_type: read
+    address: 0x29
+    bitmask: 0x0002
+    device_class: problem
+
+  - platform: modbus_controller
+    modbus_controller_id: idegis
+    name: "Electrólisis running"
+    register_type: read
+    address: 0x40
+    bitmask: 0x0001
+
+  - platform: modbus_controller
+    modbus_controller_id: idegis
+    name: "Polaridad inversa"
+    register_type: read
+    address: 0x40
+    bitmask: 0x0002
+
+  - platform: modbus_controller
+    modbus_controller_id: idegis
+    name: "Cubierta puesta"
+    register_type: read
+    address: 0x40
+    bitmask: 0x0004
+
+  - platform: modbus_controller
+    modbus_controller_id: idegis
+    name: "Aplicando setpoint cover"
+    register_type: read
+    address: 0x40
+    bitmask: 0x0008
+
+  - platform: modbus_controller
+    modbus_controller_id: idegis
+    name: "Límite g/día alcanzado"
+    register_type: read
+    address: 0x40
+    bitmask: 0x0080
+    device_class: problem
+
+  - platform: modbus_controller
+    modbus_controller_id: idegis
+    name: "Dosificando pH"
+    register_type: read
+    address: 0x56
+    bitmask: 0x0001
+
+# ── Diagnóstico ────────────────────────────────────────────────────────────────
+text_sensor:
+  - platform: template
+    name: "Estado Modbus"
+    id: idegis_status
+    update_interval: 60s
+    lambda: |-
+      return {"online"};  # placeholder, se ampliará con health check
+
+# TODO Fase 2: añadir `number:` para setpoints (pH, ORP, %prod) usando
+# register_type: holding y function 0x06.
