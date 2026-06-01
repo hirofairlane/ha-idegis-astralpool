@@ -65,6 +65,8 @@ incluida en este repo.
 - [docs/03-wiring-esp32.md](docs/03-wiring-esp32.md) — Cableado RS485, adaptador, terminación, alimentación.
 - [docs/04-esphome-config.md](docs/04-esphome-config.md) — Diseño de la config ESPHome y entidades HA derivadas.
 - [docs/05-sensors-extra.md](docs/05-sensors-extra.md) — Sensores externos AliExpress complementarios (<100 €).
+- [docs/06-installation-y-lan.md](docs/06-installation-y-lan.md) — Instalación específica (piscina cubierta a 37 °C) + descubrimiento del Idegis en LAN.
+- [docs/07-water-chemistry.md](docs/07-water-chemistry.md) — Química del agua: rangos TFP (Trouble Free Pool) para SWG + UV.
 
 ## Estado actual
 
