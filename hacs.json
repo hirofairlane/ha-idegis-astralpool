@@ -1,0 +1,9 @@
+{
+  "name": "Idegis / AstralPool pool chlorinator",
+  "render_readme": true,
+  "homeassistant": "2024.6.0",
+  "country": ["ES", "FR", "IT", "PT", "AU", "MX", "AR"],
+  "zip_release": false,
+  "filename": "idegis_astralpool.zip",
+  "hide_default_branch": true
+}

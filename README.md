@@ -1,86 +1,134 @@
-# Integración Idegis / AstralPool en Home Assistant vía Modbus RTU + ESP32
+# ha-idegis-astralpool
 
-> Documentación, configuraciones y notas para integrar electrolizadores salinos
-> **Idegis Domotic 2 / Neolysis** y sus **gemelos AstralPool** (Elite Connect /
-> Neolysis del grupo Fluidra) en Home Assistant a través del puerto Modbus RTU
-> oficial, usando un ESP32 con adaptador RS485 y ESPHome.
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Docs: CC BY-SA 4.0](https://img.shields.io/badge/docs-CC%20BY--SA%204.0-lightgrey.svg)](LICENSE-docs)
+[![Project status: pre-alpha](https://img.shields.io/badge/status-pre--alpha-orange.svg)](work-log.md)
 
-Equipo de referencia del autor: **Idegis Neolysis Neo2-24PH/S** (24 g/h, control
-pH integrado).
+Reverse engineering, documentation and Home Assistant integration for
+**Idegis** and **AstralPool** salt water chlorinators (group Fluidra,
+Multi-Tec platform). Covers both brands because they are OEM rebadging of the
+same hardware.
 
-## Estado del arte (junio 2026)
+> 🔒 **Local-first.** The end goal is to remove the dependency on the
+> `api.idegis.net` cloud and have all telemetry and control happen on your
+> LAN, either via Modbus RTU (ESP32+RS485) or via a transparent
+> cloud-MITM proxy that runs on your own infrastructure.
 
-A día de hoy **no existe integración pública Modbus** para Idegis/AstralPool
-Neolysis en Home Assistant. Lo que hay:
+Reference device used during development: **Idegis Neolysis Neo2-24PH/S**
+(24 g/h salt electrolysis, integrated UV lamp, integrated pH control).
 
-| Solución | Tipo | Cobertura | Limitación |
+## What this project is and is not
+
+This project **is**:
+
+- A **public translation of the official Idegis Modbus map (v1.62)** into
+  readable markdown, with units, scales and editable flags.
+- A **working ESPHome configuration** to talk Modbus RTU to the chlorinator
+  over an ESP32 + RS485 adapter.
+- A **DNS-override + reverse proxy** strategy to intercept the device's
+  outbound HTTP cloud telemetry locally and expose it to Home Assistant
+  **without any additional hardware**.
+- A **water-chemistry reference** for pools with salt water generators
+  (SWG) and UV lamps, distilled from the
+  [Trouble Free Pool](https://www.troublefreepool.com/) community.
+
+This project **is not** (yet):
+
+- A polished HACS integration. It will become one — see
+  [docs/09-roadmap.md](docs/09-roadmap.md) — but right now it is a
+  documentation and prototyping repo.
+- A reverse-engineered Poolstation cloud client. For that see
+  [`cibernox/homeassistant-poolstation`](https://github.com/cibernox/homeassistant-poolstation),
+  which is the recommended drop-in if you do not want to touch hardware or
+  network.
+
+## Compatibility — Idegis ↔ AstralPool
+
+Idegis joined the Fluidra group in 2007 and produces under the
+[Multi-Tec platform](https://www.idegis.es/), which is rebadged as AstralPool
+worldwide. The following pairs share **the same firmware, the same Modbus
+register map (v1.62) and the same wifi/ethernet module**:
+
+| Idegis | AstralPool |
+|---|---|
+| Domotic 2 | Elite Connect |
+| Neolysis | Neolysis |
+
+> ⚠️ **Do not confuse with Sugar Valley *NeoPool*** (Hidrolife, Aquascenic,
+> Bayrol, Brilix…). That is a different manufacturer with a different Modbus
+> map. If you have a NeoPool device use
+> [`alexdelprete/ha-sugar-valley-neopool`](https://github.com/alexdelprete/ha-sugar-valley-neopool)
+> or the Tasmota [NeoPool](https://tasmota.github.io/docs/NeoPool/) driver.
+
+## Three integration paths (pick what you need)
+
+| Path | What it gives you | Hardware needed | Cloud dependency |
 |---|---|---|---|
-| [`cibernox/homeassistant-poolstation`](https://github.com/cibernox/homeassistant-poolstation) | Cloud (PoolStation app) | Lecturas y setpoints básicos | Depende del cloud Fluidra |
-| [`foXaCe/Fluidra-pool`](https://github.com/foXaCe/Fluidra-pool) | Cloud (Fluidra Connect / iAquaLink) | Equipos "NN" modernos | No prueba explícita en Neolysis |
-| [Hilo openHAB de C. Schreiner](https://community.openhab.org/t/integrating-idegis-domotic-2-ls-pool-controller-with-openhab-via-modbus/163549) | Modbus RTU | Prueba de concepto parcial | openHAB, sin mapa de registros completo |
-| [`ocorro/esp-modbus-mqtt-astralpool-chlorinator`](https://github.com/ocorro/esp-modbus-mqtt-astralpool-chlorinator) | ESP32 + MQTT | Solo AstralPool Smart Next | No cubre Neolysis |
+| **A · Cloud-MITM (recommended)** | Continuous telemetry via DNS override + reverse proxy on a host you already own | None | Optional (you can fully bypass `api.idegis.net`) |
+| **B · Modbus RTU** | Full bidirectional local control (read + write setpoints, time programs, etc.) | ESP32 + RS485 transceiver (~5 €) | None |
+| **C · Poolstation cloud client** | Quick start using the existing community integration | None | Yes (depends on the official Fluidra cloud) |
 
-**Confusión habitual**: *NeoPool* (Sugar Valley / Hidrolife / Bayrol / Brilix) es
-**otro fabricante distinto**, con su propia tabla Modbus y su propia integración
-HA madura ([alexdelprete/ha-sugar-valley-neopool](https://github.com/alexdelprete/ha-sugar-valley-neopool),
-[driver Tasmota NeoPool](https://tasmota.github.io/docs/NeoPool/)).
-**No es compatible** con Idegis/AstralPool Neolysis.
+The paths are not mutually exclusive — running A and B at the same time is
+the best of both worlds (push telemetry every 3–4 s from cloud-MITM,
+deterministic control from Modbus RTU). C is a fallback when A and B are not
+acceptable to the user.
 
-## Compatibilidad cruzada Idegis ↔ AstralPool
+## Repo layout
 
-Idegis pertenece al grupo **Fluidra** desde 2007 (vía Aquaria), opera como OEM y
-comparte plataforma **Multi-Tec** con AstralPool. Equivalencias confirmadas:
+```
+.
+├── README.md                  ← you are here
+├── docs/                      ← public technical documentation (English)
+│   ├── 01-hardware.md         hardware and capability bitmap
+│   ├── 02-modbus-reference.md Modbus register map (v1.62 distilled)
+│   ├── 03-wiring-esp32.md     RS485 wiring, topology, safety
+│   ├── 04-esphome-config.md   entity mapping and rollout phases
+│   ├── 05-sensors-extra.md    optional external sensors (<100 € each)
+│   ├── 06-installation-and-lan.md  installation specifics + LAN discovery
+│   ├── 07-water-chemistry.md  Trouble Free Pool targets for SWG + UV
+│   └── 08-cloud-api-discovery.md   cloud HTTP protocol of api.idegis.net
+├── esphome/
+│   └── idegis-neolysis.yaml   ESPHome config (read-only phase 1)
+├── custom_components/         ← future HACS integration
+│   └── idegis_astralpool/
+├── hacs.json                  ← HACS metadata
+├── repository.yaml            ← HA add-on repository metadata
+├── CLAUDE.md                  ← internal context (Spanish)
+└── work-log.md                ← chronological dev log (Spanish)
+```
 
-| Idegis | AstralPool | Plataforma |
-|---|---|---|
-| Domotic 2 | Elite Connect | Multi-Tec |
-| Neolysis (línea residencial) | Neolysis | Multi-Tec |
-| Tecno Connect | (línea industrial) | Multi-Tec |
+## Status — current snapshot
 
-→ **misma tabla Modbus, mismo firmware, mismo módulo wifi PoolStation/Fluidra Connect**.
+- ✅ Modbus v1.62 register map translated to markdown.
+- ✅ Idegis/AstralPool equivalence confirmed and documented.
+- ✅ Device identified on LAN (MAC `68:27:19:DA:5A:53`, OUI Microchip).
+- ✅ Cloud protocol partially reverse-engineered: HTTP plain, no TLS,
+      polling `api.idegis.net/interface/{read,write}.php?B0=...&H=...`.
+- ✅ MITM via DNS override demonstrated end-to-end.
+- 🚧 `B0` payload encoding and `H` hash formula being decoded.
+- 🚧 ESPHome config skeleton, not yet flashed onto hardware.
+- 🚧 HACS integration scaffold.
 
-La tabla Modbus de referencia (no publicada por el fabricante) es
-[`20200515 Tabla modbus 1.62 - Elite & control connect.xlsm`](20200515%20Tabla%20modbus%201.62%20-%20Elite%20%26%20control%20connect.xlsm),
-incluida en este repo.
+See [work-log.md](work-log.md) for the chronological breakdown.
 
-## Objetivos del proyecto
+## Prior art
 
-1. **Documentar** la tabla Modbus 1.62 en formato legible (markdown), traduciendo
-   direcciones, escalas y unidades de cada registro útil. → [docs/02-modbus-reference.md](docs/02-modbus-reference.md)
-2. **Publicar** la primera configuración ESPHome funcional para Idegis/AstralPool
-   Neolysis. → [esphome/idegis-neolysis.yaml](esphome/idegis-neolysis.yaml)
-3. **Cobertura completa**: lectura de todas las medidas (pH, ORP, sal,
-   temperatura, producción g/h, alarmas, horas de uso, estado bombas pH/Cl…) +
-   escritura de setpoints clave (pH, ORP, % producción, modo manual/auto, reset
-   alarmas, programación horaria).
-4. **Hardware sugerido**: BOM concreta del ESP32 + adaptador RS485 + sensores
-   externos complementarios. → [docs/03-wiring-esp32.md](docs/03-wiring-esp32.md) y [docs/05-sensors-extra.md](docs/05-sensors-extra.md)
-5. **Integración HA limpia**: entidades, dashboard ejemplo, automatizaciones
-   básicas (winterización, dosis acelerada tras fiesta, modo cubierta, etc.).
+- [`cibernox/homeassistant-poolstation`](https://github.com/cibernox/homeassistant-poolstation)
+  — Poolstation (Fluidra cloud) client.
+- [`foXaCe/Fluidra-pool`](https://github.com/foXaCe/Fluidra-pool) — Fluidra
+  Connect / iAquaLink reverse engineering.
+- [openHAB community thread by C. Schreiner](https://community.openhab.org/t/integrating-idegis-domotic-2-ls-pool-controller-with-openhab-via-modbus/163549)
+  — first public attempt at Modbus RTU for Idegis Domotic 2 LS.
 
-## Mapa de la documentación
+## Legal
 
-- [docs/01-hardware.md](docs/01-hardware.md) — Hardware Idegis Neolysis Neo2-24PH/S, capacidades reales y equivalencia AstralPool.
-- [docs/02-modbus-reference.md](docs/02-modbus-reference.md) — Mapa de registros Modbus traducido a markdown.
-- [docs/03-wiring-esp32.md](docs/03-wiring-esp32.md) — Cableado RS485, adaptador, terminación, alimentación.
-- [docs/04-esphome-config.md](docs/04-esphome-config.md) — Diseño de la config ESPHome y entidades HA derivadas.
-- [docs/05-sensors-extra.md](docs/05-sensors-extra.md) — Sensores externos AliExpress complementarios (<100 €).
-- [docs/06-installation-y-lan.md](docs/06-installation-y-lan.md) — Instalación específica (piscina cubierta a 37 °C) + descubrimiento del Idegis en LAN.
-- [docs/07-water-chemistry.md](docs/07-water-chemistry.md) — Química del agua: rangos TFP (Trouble Free Pool) para SWG + UV.
+The Modbus register map v1.62 distilled in
+[`docs/02-modbus-reference.md`](docs/02-modbus-reference.md) is derivative
+work based on technical documentation by Idegis (I.D. Electroquímica S.L.).
+The original `.xlsm` file is **intentionally not included** in this repo.
+This project is **independent of Idegis, AstralPool and Fluidra**.
 
-## Estado actual
+## License
 
-🚧 **Fase 0 — Documentación previa al cableado.** El hardware existe pero no se
-ha conectado todavía al ESP32.
-
-## Aviso legal
-
-Proyecto independiente, sin afiliación con Idegis, AstralPool ni Fluidra. La
-tabla Modbus 1.62 incluida proviene de documentación técnica del fabricante;
-si Idegis solicita su retirada, será retirada. El uso de funciones de escritura
-Modbus en un electrolizador en servicio puede dañar el equipo si se usan valores
-fuera de rango — usar bajo tu propia responsabilidad.
-
-## Licencia
-
-A definir (probablemente MIT para código, CC-BY-SA para documentación).
+- **Code**: [MIT](LICENSE)
+- **Documentation**: [CC BY-SA 4.0](LICENSE-docs)

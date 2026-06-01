@@ -1,73 +1,94 @@
 # 01 · Hardware
 
-## Equipo de referencia
+## Reference device
 
 **Idegis Neolysis Neo2-24PH/S**
 
-| Parámetro | Valor |
+| Field | Value |
 |---|---|
-| Familia | Neolysis (electrólisis salina + UV opcional, plataforma Multi-Tec) |
-| Producción | 24 g/h de cloro |
-| Control pH | Integrado (bomba peristáltica + sonda) |
-| Sufijo `/S` | Variante con sonda pH montada de fábrica |
-| Cloración | Sí (salida g/h variable) |
-| ORP / Redox | No de fábrica en este SKU (slot disponible para futuro) |
-| Temperatura | Sí (medida desde la celda) |
-| Sal | Sí (calculada por corriente y tensión de electrodos) |
-| Caudal | Detección sí/no (no caudalímetro m³/h) |
-| Modbus | Slave RTU, configurable a 9600/19200 bps, 8E1/8N2/8N1, dirección 1-5 (default 2) |
-| Modbus secundario | Sí — la placa expone un segundo bus Modbus slave (`secondary_modbus_slave` en el bitmap de capacidades) |
-| Slot relés | Sí — se puede ampliar con módulo de salidas |
-| App cloud | PoolStation (si se acopla el módulo wifi opcional) |
+| Family | Neolysis (salt electrolysis + UV optional, Multi-Tec platform) |
+| Output | 24 g/h chlorine |
+| pH control | Built-in (peristaltic pump + pH probe) |
+| Suffix `/S` | Variant with pH probe pre-mounted from factory |
+| Chlorination | Yes (variable g/h output) |
+| ORP / Redox | Not from factory on this SKU (free slot available) |
+| Temperature | Yes (measured at the cell) |
+| Salt | Yes (computed from electrode current and voltage) |
+| Flow detection | Yes/no detection only (no m³/h flowmeter) |
+| Modbus | RTU slave, 9600/19200 bps, 8E1/8N2/8N1, address 1-5 (default 2) |
+| Secondary Modbus | Yes — the PCB exposes a second Modbus slave (`secondary_modbus_slave` bit in capability bitmap) |
+| Relay slot | Yes — extension slot for additional outputs |
+| Cloud app | Poolstation (optional wifi module) |
 
-Capacidades reportadas por el registro holding `0x06`
-(`ID_Technologies_implemented`) — el bitmap real lo confirmaremos al primer
-pairing por Modbus, pero según el SKU `Neo2-24PH/S`:
+## Capability bitmap (holding register `0x06`)
 
-- `electrolysis` (bit 0) ✅
-- `ph` (bit 1) ✅
-- `cl-orp` (bit 2) ⚠️ slot disponible, **no montado de fábrica** en este SKU
-- `cl-ppm` (bit 3) ⚠️ slot disponible, no montado
-- `temperature` (bit 4) ✅
-- `salt` (bit 5) ✅
-- `uv` (bit 6) ⚠️ depende del SKU (la línea Neolysis lo soporta; `/S` típicamente no lleva UV)
-- `caudal` (bit 7) ❌
-- `pressure` (bit 8) ❌
-- `biopool` (bit 9) ✅
-- `secondary_modbus_slave` (bit 11) ✅
-- `slot_relay` (bit 13) ✅
-- `electrolysis_low_salt` (bit 15) ✅
+The chlorinator publishes its supported features as a bitmap at holding
+register `0x06` (`ID_Technologies_implemented`). This is the source of truth
+for what the unit can actually do. Read it on the first pairing — the
+following is the expected layout for the `Neo2-24PH/S` SKU:
 
-## Equivalencia OEM con AstralPool (Fluidra)
+| Bit | Name | Meaning | Expected |
+|---|---|---|---|
+| 0 | electrolysis | Salt electrolysis cell | ✅ |
+| 1 | ph | pH probe slot present | ✅ |
+| 2 | cl-orp | ORP probe slot present | ⚠ slot only, not populated |
+| 3 | cl-ppm | Amperometric PPM probe slot present | ⚠ slot only, not populated |
+| 4 | temperature | Temperature measurement | ✅ |
+| 5 | salt | Salt level measurement | ✅ |
+| 6 | uv | UV lamp can be attached | ⚠ depends on sub-SKU |
+| 7 | caudal | m³/h flow measurement | ❌ |
+| 8 | pressure | Filter pressure measurement | ❌ |
+| 9 | biopool | Biopool mode | ✅ |
+| 11 | secondary_modbus_slave | Second Modbus slave on PCB | ✅ |
+| 13 | slot_relay | Relay extension slot | ✅ |
+| 15 | electrolysis_low_salt | Low-salt electrolysis | ✅ |
 
-| Idegis | AstralPool | Notas |
+## OEM equivalence with AstralPool (Fluidra)
+
+| Idegis | AstralPool | Notes |
 |---|---|---|
-| **Domotic 2** | **Elite Connect** | Mismo equipo, mismo firmware Multi-Tec, misma tabla Modbus, mismo módulo wifi (PoolStation). El distribuidor oficial Fluidra/SIBO publica documentación marcada como Idegis describiendo el Elite Connect. |
-| **Neolysis** | **Neolysis** | Mismo nombre comercial en ambas marcas. Algunos retailers lo venden bajo doble marca (`Neolysis Zero Salt x UV AstralPool` con SKU Idegis). |
-| Tecno Connect | (línea industrial) | Multi-Tec industrial. |
+| **Domotic 2** | **Elite Connect** | Same device, same Multi-Tec firmware, same Modbus map, same wifi module (Poolstation). The Fluidra/SIBO distributor publishes documentation labelled as Idegis describing the Elite Connect. |
+| **Neolysis** | **Neolysis** | Same commercial name in both brands. Some retailers sell it double-branded (e.g. "Neolysis Zero Salt × UV AstralPool" with an Idegis SKU). |
+| Tecno Connect | (industrial line) | Multi-Tec industrial. |
 
-Esta documentación, por tanto, es **directamente aplicable a los AstralPool
-Elite Connect y AstralPool Neolysis equivalentes**.
+This repository is therefore **directly applicable to AstralPool Elite
+Connect and AstralPool Neolysis units**.
 
-> ⚠️ **NO confundir** con **Sugar Valley NeoPool** (Hidrolife/Aquascenic/Bayrol/Brilix).
-> Es **otro fabricante diferente**, con su propia tabla Modbus y su propia
-> integración HA. El nombre se parece pero no son compatibles.
+> ⚠️ **Not to be confused** with **Sugar Valley NeoPool**
+> (Hidrolife/Aquascenic/Bayrol/Brilix). That is a different manufacturer
+> with a different Modbus map and its own mature HA integration. Similar
+> names, unrelated products.
 
-## Adaptador RS485 (pendiente confirmar modelo)
+## RS485 adapter (model TBC)
 
-Opciones habituales:
+Two common options:
 
-- **C-MOD de Idegis** (kit oficial) — convertidor Modbus pensado para
-  acoplarse al conector interno del equipo. Caro pero plug-and-play.
-- **Conversor RS485 genérico** (MAX485, MAX3485, SP3485, módulo TTL↔RS485 con
-  control de flujo automático tipo "auto direction") + ESP32 — opción típica
-  DIY a coste despreciable (<5 €).
+### A) Official Idegis C-MOD kit
 
-**TODO** Sergio: confirmar cuál tiene comprado para ajustar [docs/03-wiring-esp32.md](03-wiring-esp32.md).
+Plug-in module designed for the internal Modbus connector on the
+chlorinator. Exposes A/B/GND on terminal blocks. Expensive but
+plug-and-play, no need to mess with the unit's internal wiring.
+
+### B) Generic RS485 transceiver (~3 €)
+
+The usual eBay/AliExpress modules:
+
+- **MAX485 with manual DE/RE** — needs an extra ESP32 GPIO to toggle
+  direction (DE and RE tied together, driven by the ESP). ESPHome
+  supports this via `flow_control_pin`.
+- **MAX3485 / SP3485 at 3.3 V** — preferred for ESP32 without a
+  level shifter.
+- **Auto-direction modules (XY-017 / XY-K485 and similar)** — no GPIO
+  control needed. Recommended for a simple first deployment. Some
+  variants need 5 V Vcc.
+
+For a first deployment we recommend the **5 V auto-direction module** powered
+from the ESP32's VIN through a USB-C 5 V supply.
 
 ## ESP32
 
-Cualquier ESP32 sirve (DevKit-C v4, S3, WROOM-32, etc.). Recomendado con
-conector USB-C, WiFi estable y al menos 2 UART hardware libres (UART0 reservada
-para flasheo/logs; usaremos UART1 o UART2 para el RS485). Si Sergio quiere
-añadir más sensores I²C (ADS1115 para presión, etc.), reservar GPIO21/22 (I²C).
+Any modern ESP32 works (DevKit-C v4, S3, WROOM-32 etc.). Pick one with USB-C,
+stable wifi and at least two free hardware UARTs (UART0 reserved for
+flashing/logs — use UART1 or UART2 for RS485). If you plan to add I²C
+sensors (e.g. ADS1115 for the filter pressure transducer), reserve GPIO21
+and GPIO22 for the bus.

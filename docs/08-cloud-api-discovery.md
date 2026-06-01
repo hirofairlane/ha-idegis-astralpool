@@ -1,153 +1,159 @@
-# 08 · Descubrimiento de la API Cloud Idegis (HTTP plano)
+# 08 · Idegis cloud API discovery (HTTP, no TLS)
 
-Resultado de la ventana de diagnóstico activa del **2026-06-02 00:08-00:12**
-durante la cual la depuradora estaba en marcha y el Idegis con la electrónica
-alimentada.
+Result of the active diagnostic window **2026-06-02 00:08–00:13** with the
+pump running and the chlorinator electronics powered.
 
-## Hallazgos críticos
+## Critical findings
 
-### 1. El Idegis NO expone NINGÚN puerto entrante por LAN
+### 1. The chlorinator does NOT expose any inbound LAN port
 
-Confirmado con dos escaneos nmap independientes (top-1000 en 101 s y los 65535
-puertos en 131 s) durante ventana activa:
+Confirmed with two independent nmap scans during the active window
+(top-1000 in 101 s and the full 65535 ports in 131 s):
 
-- ICMP responde (host UP)
-- **0 puertos TCP abiertos**
-- Modbus TCP (502) cerrado/timeout
-- HTTP (80, 8080, 443, 8443) cerrado
-- Cualquier puerto: cerrado
+- ICMP replies (host UP)
+- **0 TCP ports open**
+- Modbus TCP (502): closed/timeout
+- HTTP (80, 8080, 443, 8443): closed
+- Any port: closed
 
-**Consecuencia**: integración Modbus TCP **descartada**. El Idegis es
-**únicamente cliente**, no servidor.
+**Consequence**: Modbus TCP is **off the table**. The device is purely a
+**client**, not a server.
 
-### 2. El Idegis hace polling HTTP plano a `api.idegis.net`
+### 2. The chlorinator polls `api.idegis.net` over plain HTTP
 
-Capturado por **conntrack del router Principal** y confirmado por **dnsmasq
-query log**:
+Captured via the **conntrack table of the main OpenWrt router** and
+confirmed by the **dnsmasq query log**:
 
-- **Dominio**: `api.idegis.net`
-- **Puerto**: 80 (HTTP, **sin TLS**)
-- **CDN**: Imperva/Incapsula (IP anycast 45.60.153.189, AS19551)
-- **DNS resolver usado**: 9.9.9.9 (Quad9) — el equipo ignora el DNS local; va a un upstream público fijo
-- **Frecuencia**: 1 request cada 3-4 segundos (write.php intercalado con read.php)
+- **Domain**: `api.idegis.net`
+- **Port**: 80 (HTTP, **no TLS**)
+- **Backend**: Imperva/Incapsula (anycast IP 45.60.153.189, AS19551)
+- **DNS resolver**: 9.9.9.9 (Quad9) — the device ignores the LAN DNS and
+  uses a fixed public upstream
+- **Polling rate**: 1 request every 3-4 seconds (write.php interleaved
+  with read.php)
 
-### 3. Estructura del protocolo
+### 3. Protocol shape
 
-Endpoints observados:
+Endpoints observed:
 
-| Endpoint | Función inferida |
+| Endpoint | Inferred role |
 |---|---|
-| `GET /interface/write.php` | El Idegis **envía** telemetría/estado al cloud |
-| `GET /interface/read.php` | El Idegis **pregunta** al cloud si hay órdenes pendientes |
+| `GET /interface/write.php` | The device **pushes** telemetry/state to the cloud |
+| `GET /interface/read.php` | The device **polls** for pending commands |
 
-Ambos llevan dos parámetros query string:
+Both carry two query-string parameters:
 
 ```
-?B0=<payload codificado alfanumérico>&H=<hash MD5 32 hex>
+?B0=<alphanumeric encoded payload>&H=<MD5 hash, 32 hex>
 ```
 
-#### Ejemplo capturado
+#### Example
 
 ```
 GET /interface/write.php?B0=JS4fUX2d24UWcVbXJYfYfd4fU0W430TD4fUX2d24cbabWbcaXXaba4fU0W430CI4fUX2d24a4fU0W430LI4fUX2d24aacad4fU0W430CD4fUX2d24bVWadfbWaa4fU0W430SG4fUX2d24aVgfW&H=C651B84CA98BD763E88A7CFD6DE86EC6 HTTP/1.1
 ```
 
-User-Agent: vacío (`"-"`).
+User-Agent is empty (`"-"`).
 
-#### Análisis preliminar del payload `B0`
+#### Preliminary analysis of `B0`
 
-- Caracteres: alfanumérico (`0-9 A-Z a-z`)
-- **Separador candidato**: la secuencia `4fU0W430` aparece repetida varias
-  veces actuando como delimitador entre campos.
-- Tokens entre separadores parecen **identificadores de campo**:
+- Character set: alphanumeric (`0-9 A-Z a-z`).
+- **Field separator candidate**: the string `4fU0W430` repeats multiple
+  times and acts as a delimiter between fields.
+- Tokens between separators look like **field identifiers**:
   - `TD` → temperature data?
   - `CI` → current?
   - `LI` → limit?
-  - `CD` → code/status?
+  - `CD` → counter/timestamp (varies request-to-request, monotonic)
   - `SG` → setpoint generic?
-- Y otra subdivisión interna con el patrón `4fU0W430<FIELD>4fUX2d24<VALUE>`.
-- Hay un prefijo `JS4fUX2d24UWcVbXJYfYfd` que probablemente codifique
-  identidad del equipo + token de sesión.
+- A second-level structure `4fU0W430<FIELD>4fUX2d24<VALUE>` separates key
+  from value.
+- The leading `JS4fUX2d24UWcVbXJYfYfd` is invariant across requests —
+  likely device identity + session token.
 
-Hipótesis a validar:
-1. El payload es una codificación reversible (no cifrado fuerte), tipo
-   sustitución alfabética o base32 modificado, sobre un formato key-value.
-2. `H` es **MD5(B0 + shared_secret)** o **MD5(B0 + serial_equipo + timestamp_truncado)**.
-3. Si la hipótesis se confirma, podemos generar requests válidos y simular
-   tanto telemetría como respuestas del cloud.
+Hypotheses to validate:
 
-### 4. Capacidad de MITM verificada
+1. The payload uses a reversible encoding (not strong encryption),
+   probably letter substitution or modified base32 on top of a key-value
+   structure.
+2. `H = MD5(B0 + shared_secret)` or `MD5(B0 + device_serial + timestamp_trunc)`.
+3. If validated, we can both decode incoming telemetry and forge valid
+   responses to `read.php` to inject local commands.
 
-Durante 60 s se aplicó un DNS override en el router Principal
-(`api.idegis.net → 192.168.1.70` = CT104) y el Idegis envió correctamente sus
-requests a CT104:80, donde nginx existente respondió 404 (5 conexiones
-TIME_WAIT confirmadas en `ss`). El equipo siguió funcionando aunque las
-respuestas eran erróneas — es **resiliente a fallos transitorios** y reintenta.
+### 4. MITM capability verified
 
-Esto demuestra que es viable:
-- Montar un **proxy reverso permanente** en CT104 que intercepte, decodifique
-  y reenvíe al cloud original.
-- Exponer cada métrica del payload como sensor HA.
-- Inyectar respuestas modificadas en `read.php` para enviar órdenes al equipo
-  sin pasar por el cloud Idegis (control bidireccional cloud-emulado).
+For 60 s a DNS override was applied on the main router
+(`api.idegis.net → 192.168.1.70` = CT104). The Idegis correctly sent its
+requests to CT104:80, where the existing nginx logged 5 connections (all
+`TIME_WAIT` confirmed via `ss`). The device kept running even though the
+answers were 404s — it is **resilient to transient failures** and retries.
 
-## Nuevo plan de arquitectura — 3 vías complementarias
+This proves that we can:
 
-| Vía | Propósito | Estado | Coste |
+- Run a **permanent reverse proxy** in CT104 that intercepts, decodes and
+  forwards to the original cloud.
+- Expose every metric of the payload as a HA sensor.
+- Inject modified replies into `read.php` to send commands to the device
+  without going through the Idegis cloud (cloud-emulated bidirectional
+  control).
+
+## New architecture — three complementary paths
+
+| Path | Purpose | Status | Cost |
 |---|---|---|---|
-| **A) Cloud-MITM proxy** (nuevo, vía descubierta) | Telemetría push del equipo cada 3-4 s, sin tocar el Idegis | Por desarrollar | ~0 € (solo software en CT104) |
-| **B) Modbus RTU + ESP32** (plan original) | Control local total, lectura síncrona, no depende de internet | Por desarrollar | ~30 € hardware |
-| **C) Cloud PoolStation** (`cibernox/homeassistant-poolstation`) | Backup, validación cruzada | Listo, plug-and-play | 0 € |
+| **A) Cloud-MITM proxy** (new) | Pushed telemetry every 3–4 s, no contact with the chlorinator | To implement | ~0 € (software in CT104) |
+| **B) Modbus RTU + ESP32** (original plan) | Full local control, deterministic, internet-independent | To implement | ~30 € hardware |
+| **C) Poolstation cloud** (`cibernox/...`) | Drop-in fallback / cross-check | Done | 0 € |
 
-**Recomendación revisada**: empezar por la vía **A**. Es la que más rápido
-da resultado (sin esperar componentes), no requiere intervención física, y
-nos da telemetría inmediata. La vía B (RTU) sigue siendo deseable para
-control offline y desconectar del cloud, pero ya no es urgente.
+**Revised recommendation**: start with path **A**. Fastest to a result,
+no physical intervention, immediate telemetry. Path B (RTU) remains
+desirable for offline control and to fully disconnect from the cloud, but
+is no longer urgent.
 
-## Siguiente fase técnica (vía A)
+## Next technical phase (path A)
 
-1. **Decodificar `B0`** completo a partir de muestras múltiples capturadas en
-   nginx access log. Buscar invariantes (prefijo de identidad) y patrón de
-   incremento (timestamps/contadores).
-2. **Verificar la fórmula del hash H**: probar `MD5(B0)`, `MD5(B0+H)` no
-   aplica obviamente, `MD5(B0+serial)`, etc.
-3. **Implementar proxy reverso transparente** en CT104:
-   - Escuchar :80 en una IP nueva (puerto 80 ya está ocupado por nginx
-     general) o reorganizar nginx para hacer reverse-proxy con location
-     `/interface/`.
-   - Reenviar a `api.idegis.net` real con DNS resuelto manualmente
-     (evitando el bucle del propio override).
-   - Loguear cada request/response.
-   - Publicar las métricas decodificadas a MQTT (mosquitto disponible en
+1. **Decode `B0`** from multiple samples captured in nginx logs. Look for
+   invariants (identity prefix) and an increment pattern (timestamps /
+   counters).
+2. **Validate the formula of `H`**: try `MD5(B0)`, `MD5(B0+serial)`,
+   `MD5(B0+secret)`, etc.
+3. **Build the transparent reverse proxy** in CT104:
+   - Listen on port 80 on a different IP (the current nginx already binds
+     :80) or extend nginx with a `location /interface/` reverse proxy.
+   - Forward to the real `api.idegis.net` (DNS resolved out-of-band to
+     avoid an override loop).
+   - Log every request/response.
+   - Publish decoded metrics via MQTT (mosquitto is already running in
      CT104).
-4. **HA**: consumir MQTT → entidades sensor.
+4. **HA**: consume MQTT → sensor entities.
 
-## Riesgo: ¿se entera Imperva del MITM?
+## Does Imperva notice the MITM?
 
-El equipo Idegis no usa TLS, no usa certificate pinning. El MITM via DNS
-override es **invisible para el Idegis y para Imperva** (el reenvío al cloud
-real va por el mismo path TCP de siempre). Solo se vería como una latencia
-extra de 1-2 ms.
+The Idegis does not use TLS and does not pin certificates. A DNS override
+MITM is **invisible to both the Idegis and Imperva** (the forwarded
+request reaches the cloud through the same TCP path as always — only ~1-2
+ms of extra latency).
 
-## Log de captura
+## Capture log
 
 ```
 /opt/piscina/captures/idegis-cloud-protocol-<TIMESTAMP>.log
 ```
 
-Contiene la copia completa del nginx access.log durante la ventana de DNS
-override (5 requests del Idegis, todas con respuesta 404 de nginx por defecto).
+Full nginx access log copy from the override window (12+ requests from
+the device, all answered with default 404).
 
-## TODOs derivados
+## Derived TODOs
 
-- [ ] Capturar 100+ requests del Idegis (otra ventana, este vez con un
-      listener custom que responde 200 OK vacío para no romper el polling).
-- [ ] Decodificar empíricamente `B0`.
-- [ ] Validar fórmula `H`.
-- [ ] Decidir si reescribir nginx para proxy reverso o crear un container/IP
-      dedicada para el listener Idegis.
-- [ ] Una vez funcionando: borrar la vía cloud PoolStation (vía C) por
-      redundante, o mantenerla como backup.
-- [ ] Considerar **bloquear DNS de `api.idegis.net` en el router** una vez el
-      proxy esté operativo, para que el equipo no llegue NUNCA al cloud real
-      y todo viva 100% local.
+- [ ] Capture 100+ requests from the device (next window, this time with a
+      custom listener that returns 200 OK with an empty body, so the
+      polling does not perceive failure).
+- [ ] Empirically decode `B0`.
+- [ ] Validate the `H` formula.
+- [ ] Decide whether to rewrite nginx as a reverse proxy or stand up a
+      dedicated container/IP for the Idegis listener.
+- [ ] Once stable, drop path C (Poolstation cloud) as redundant or keep
+      it as a backup.
+- [ ] Consider **blocking DNS for `api.idegis.net` at the router** once
+      the proxy is operational, so the device never reaches the real
+      cloud and the system lives 100% locally.
