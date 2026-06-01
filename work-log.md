@@ -4,6 +4,67 @@ Diario cronológico inverso. Entradas más recientes arriba. Castellano.
 
 ---
 
+## 2026-06-02 — Vía A en marcha: proxy reverso transparente + análisis B0
+
+Permiso ampliado: puedo encender/apagar `switch.depuradora` hasta las 8am.
+
+**Desplegado**:
+- Nuevo vhost nginx en CT104 `/etc/nginx/sites-available/idegis-proxy`:
+  - `server_name api.idegis.net;`
+  - `proxy_pass http://45.60.153.189` (IP literal para evitar bucle DNS).
+  - `proxy_set_header Host api.idegis.net;`
+  - Log dedicado en `/var/log/nginx/idegis_proxy_access.log` con
+    `log_format idegis_full` (request URL + status + upstream).
+- DNS override permanente en Principal:
+  `api.idegis.net → 192.168.1.70` (CT104).
+- `tcpdump` en CT104 capturando tráfico bidireccional CT104↔cloud a
+  `/opt/piscina/captures/idegis-bidi-*.pcap` (request body + response body
+  completos, sin truncar).
+- Script `/opt/piscina/scripts/b0-analyzer.py` que parsea log nginx +
+  identifica invariantes, alfabeto, candidatos de hash.
+
+**Hallazgos confirmados con tráfico real cliente↔proxy↔cloud**:
+- Polling rate: 1 request cada ~25-30s con la depuradora ON (más lento de
+  lo observado en la primera captura — la depuradora estuvo a 3-4s/req
+  posiblemente por estado inicial).
+- `upstream_status=200` siempre, `upstream_time≈0.1s` → el cloud
+  responde rápido y el proxy es transparente.
+- `read.php` → response body de **176 bytes** (probable comando/config
+  del cloud al equipo).
+- `write.php` → response body de **16 bytes** (probable ACK).
+
+**Estructura B0 (12+5=17 muestras analizadas)**:
+- Field separator: `4fU0W430`
+- Key-value separator: `4fUX2d24`
+- Schema: `<prefix>` + `<sep>TD<kv>cbabWbcaXXaba` + `<sep>CI<kv>a` +
+  `<sep>LI<kv><value>` + `<sep>CD<kv><counter>` +
+  (only write.php) `<sep>SG<kv><value>`
+- INVARIANTES: `__prefix__` = `JS4fUX2d24UWcVbXJYfYfd` (identidad
+  equipo), `TD` = `cbabWbcaXXaba` (sesión/serial), `CI` = `a`.
+- VARÍA lento: `LI` (`aacad` antiguas → `aacfb`/`fc`/`fd`/`fe`/`ff`
+  nuevas). Patrón monotónico tipo contador.
+- VARÍA rápido: `CD` (cambia cada request) — contador/timestamp.
+- VARÍA semi-rápido (solo write): `SG` (2 valores observados:
+  `aVgUa`, `aVgfW`) — probable estado/setpoint.
+
+**Alfabeto B0**: 24 caracteres `0234CDGIJLSTUVWXYabcdefg`. No es base62
+ni hex. Es un alfabeto **custom de 24**. Falta determinar el orden
+(distinto al lexicográfico).
+
+**Hash H**: ninguna fórmula MD5 obvia encaja. Probable salting con
+secret no documentado. Necesita más samples + corpus de prueba.
+
+**Pendiente próxima iteración**:
+- Acumular más muestras con la depuradora encendida (cron natural y/o
+  ventana manual).
+- Decodificar pcap bidireccional para conocer también las respuestas
+  del cloud (especialmente esos 176 bytes de `read.php`).
+- Identificar orden del alfabeto B0 por diferencias temporales conocidas.
+- Con Poolstation app abierta como ground-truth: correlacionar valores
+  reportados vs B0 raw.
+
+---
+
 ## 2026-06-02 — Repo público vivo
 
 `gh repo create hirofairlane/ha-idegis-astralpool --public` desde CT104 →

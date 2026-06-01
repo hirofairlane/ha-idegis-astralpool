@@ -143,6 +143,97 @@ ms of extra latency).
 Full nginx access log copy from the override window (12+ requests from
 the device, all answered with default 404).
 
+## Update — transparent reverse proxy live (2026-06-02)
+
+A dedicated nginx vhost is now running in CT104:
+
+```nginx
+log_format idegis_full '$time_iso8601 client=$remote_addr "$request" '
+                       'status=$status sent=$body_bytes_sent '
+                       'upstream_status=$upstream_status upstream_time=$upstream_response_time '
+                       'req_len=$request_length';
+
+server {
+    listen 80;
+    server_name api.idegis.net;
+    access_log /var/log/nginx/idegis_proxy_access.log idegis_full;
+    error_log  /var/log/nginx/idegis_proxy_error.log warn;
+
+    location / {
+        proxy_pass http://45.60.153.189$request_uri;
+        proxy_set_header Host api.idegis.net;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_http_version 1.0;
+        proxy_buffering off;
+        proxy_read_timeout 30s;
+        proxy_connect_timeout 5s;
+    }
+}
+```
+
+DNS override applied permanently on the main router (`api.idegis.net →
+192.168.1.70`). The chlorinator keeps polling normally and the cloud
+keeps replying — the device is completely unaware of the MITM.
+
+### Observed traffic shape (post-proxy)
+
+- Polling rate while pump running: 1 request every ~25–30 s (interleaved
+  `read.php` and `write.php`).
+- `upstream_status=200` consistently, `upstream_time≈0.1s`.
+- `read.php` → cloud responds with a **176-byte body** (likely the
+  command/configuration block back to the device).
+- `write.php` → cloud responds with a **16-byte body** (likely an ACK).
+
+### Confirmed B0 schema (17 samples)
+
+```
+<prefix>
+  4fU0W430 TD 4fUX2d24 <value>      ← INVARIANT: cbabWbcaXXaba (session/serial)
+  4fU0W430 CI 4fUX2d24 <value>      ← INVARIANT: a
+  4fU0W430 LI 4fUX2d24 <value>      ← slow counter
+  4fU0W430 CD 4fUX2d24 <value>      ← fast counter (each request)
+  4fU0W430 SG 4fUX2d24 <value>      ← (write.php only) state/setpoint flags
+```
+
+Prefix `JS4fUX2d24UWcVbXJYfYfd` is invariant across all 17 samples and is
+almost certainly the device identity token.
+
+### B0 alphabet
+
+24 characters: `0234CDGIJLSTUVWXYabcdefg`. Not base62, not hex, not
+base32 — it is a custom 24-character alphabet. The lexicographic order
+does **not** match the codec order (deltas between consecutive `CD`
+values do not match the time intervals when interpreted that way). The
+true order has to be reconstructed empirically.
+
+### Hash H — no obvious formula yet
+
+Tested against the captured samples:
+
+| Candidate | Matches |
+|---|---|
+| `MD5(B0)` | 0 |
+| `MD5(path+B0)` | 0 |
+| `MD5(B0+path)` | 0 |
+| `MD5(B0+"idegis")` | 0 |
+| `MD5(B0+"Idegis")` | 0 |
+| `MD5(B0+"poolstation")` | 0 |
+| `MD5("?B0="+B0)` | 0 |
+
+`H` is almost certainly `MD5(B0 + <shared_secret>)`. The shared secret
+needs to be brute-forced or extracted from the device firmware.
+
+### Open work
+
+- Decode `B0` alphabet by feeding ground-truth measurements (Poolstation
+  app open in another window during a capture).
+- Decode cloud responses (the 176-byte read.php body) to understand the
+  command protocol.
+- Brute-force the hash `H` shared secret (dictionary attack with common
+  values: "idegis", "fluidra", "neolysis", "poolstation", device serial,
+  domain, etc.).
+
 ## Derived TODOs
 
 - [ ] Capture 100+ requests from the device (next window, this time with a
