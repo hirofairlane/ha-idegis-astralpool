@@ -4,6 +4,20 @@ Diario cronológico inverso. Entradas más recientes arriba. Castellano.
 
 ---
 
+## 2026-06-02 — Repo público vivo
+
+`gh repo create hirofairlane/ha-idegis-astralpool --public` desde CT104 →
+`git remote add origin` + `git push -u origin main` desde NAS local con
+clave SSH `~/.ssh/id_ed25519`. 4 commits en `main`.
+
+URL: https://github.com/hirofairlane/ha-idegis-astralpool
+
+> **Nota**: los 4 commits iniciales tienen mensajes en castellano (legacy
+> de antes de aplicar la convención). A partir de aquí todos los nuevos
+> commits van en inglés. No reescribimos historia (no force-push a main).
+
+---
+
 ## 2026-06-02 — Convención inglés + estructura repo público
 
 **Conclusión sesión 1.** Sergio recordó que las convenciones del NAS son:
