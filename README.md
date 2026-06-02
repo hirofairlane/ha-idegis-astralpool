@@ -60,6 +60,26 @@ register map (v1.62) and the same wifi/ethernet module**:
 > [`alexdelprete/ha-sugar-valley-neopool`](https://github.com/alexdelprete/ha-sugar-valley-neopool)
 > or the Tasmota [NeoPool](https://tasmota.github.io/docs/NeoPool/) driver.
 
+## Quick start (path A — recommended)
+
+1. In Home Assistant: **Settings → Add-ons → ⋮ → Repositories → Add**
+   `https://github.com/hirofairlane/ha-idegis-astralpool`.
+2. Install the **Idegis / AstralPool cloud capturer** add-on and start it.
+3. In HACS: **Integrations → ⋮ → Custom repositories → Add** this same
+   repository as an *Integration*.
+4. Install the integration. Add a new integration via **Settings →
+   Devices & services → + Add integration → Idegis / AstralPool** with
+   host = your HA host and port = 8765.
+5. Add a DNS override on your LAN router that points `api.idegis.net` to
+   the IP of your Home Assistant host. Example for OpenWrt:
+   ```sh
+   uci add_list dhcp.@dnsmasq[0].address='/api.idegis.net/<HA_IP>'
+   uci commit dhcp && /etc/init.d/dnsmasq restart
+   ```
+
+The integration starts surfacing entities as soon as the chlorinator
+makes its next request to the cloud (the pump must be running).
+
 ## Three integration paths (pick what you need)
 
 | Path | What it gives you | Hardware needed | Cloud dependency |
@@ -86,10 +106,19 @@ acceptable to the user.
 │   ├── 05-sensors-extra.md    optional external sensors (<100 € each)
 │   ├── 06-installation-and-lan.md  installation specifics + LAN discovery
 │   ├── 07-water-chemistry.md  Trouble Free Pool targets for SWG + UV
-│   └── 08-cloud-api-discovery.md   cloud HTTP protocol of api.idegis.net
+│   ├── 08-cloud-api-discovery.md   cloud HTTP protocol of api.idegis.net
+│   ├── 09-roadmap.md          phased plan toward HACS default
+│   └── 10-addon-architecture.md   the HA add-on stack (current recommendation)
+├── addon/                     ← HA Add-on (nginx + capturer, self-contained)
+│   ├── config.yaml            add-on manifest
+│   ├── Dockerfile
+│   ├── build.yaml
+│   ├── apparmor.txt
+│   ├── DOCS.md                store description
+│   └── rootfs/                copied verbatim into the image
 ├── esphome/
 │   └── idegis-neolysis.yaml   ESPHome config (read-only phase 1)
-├── custom_components/         ← future HACS integration
+├── custom_components/         ← HACS integration (companion of the add-on)
 │   └── idegis_astralpool/
 ├── hacs.json                  ← HACS metadata
 ├── repository.yaml            ← HA add-on repository metadata

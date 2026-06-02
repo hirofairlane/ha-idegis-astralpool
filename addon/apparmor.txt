@@ -1,0 +1,54 @@
+#include <tunables/global>
+
+profile idegis_capturer flags=(attach_disconnected,mediate_deleted) {
+  #include <abstractions/base>
+  #include <abstractions/python>
+
+  # Capability set kept minimal — no NET_ADMIN, no SYS_ADMIN.
+  capability dac_read_search,
+  capability net_bind_service,
+  capability setgid,
+  capability setuid,
+
+  # S6 supervisor
+  /init ix,
+  /run/s6/** ix,
+  /run/service/** rwk,
+  /command/with-contenv ix,
+  /command/** ix,
+  /package/** ix,
+  /etc/s6-overlay/** rix,
+  /usr/bin/bashio ix,
+  /usr/lib/bashio/** r,
+
+  # Container basics
+  /bin/** ix,
+  /usr/bin/** ix,
+  /usr/lib/** r,
+  /usr/local/** ix,
+  /sbin/** ix,
+  /lib/** rmix,
+  /etc/** r,
+  /etc/nginx/** rw,
+  /etc/services.d/** rix,
+  /etc/cont-init.d/** rix,
+  /proc/** r,
+  /sys/** r,
+  /dev/null rw,
+  /dev/zero r,
+  /dev/random r,
+  /dev/urandom r,
+  /dev/tty rw,
+
+  # App and data
+  /opt/idegis/** r,
+  /data/** rw,
+  /var/log/nginx/** rw,
+  /var/lib/nginx/** rw,
+  /run/nginx/** rw,
+
+  # nginx + python
+  /usr/sbin/nginx ix,
+  /usr/bin/python3 ix,
+  /usr/lib/python3*/** r,
+}

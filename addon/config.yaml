@@ -1,0 +1,42 @@
+---
+name: "Idegis / AstralPool cloud capturer"
+description: >-
+  Local capture and decode of the Idegis / AstralPool pool chlorinator
+  cloud telemetry (Fluidra Multi-Tec platform). Acts as a transparent
+  HTTP reverse proxy for api.idegis.net and exposes the decoded state
+  on a local JSON API the companion Home Assistant integration consumes.
+version: "0.1.0"
+slug: "idegis_capturer"
+init: false
+arch:
+  - aarch64
+  - amd64
+  - armhf
+  - armv7
+  - i386
+url: "https://github.com/hirofairlane/ha-idegis-astralpool"
+startup: services
+boot: auto
+ports:
+  80/tcp: 80
+  8765/tcp: 8765
+ports_description:
+  80/tcp: "HTTP listener for the chlorinator (DNS-overridden api.idegis.net)"
+  8765/tcp: "Capturer JSON API for the HA integration"
+options:
+  upstream_host: "45.60.153.189"
+  upstream_host_header: "api.idegis.net"
+  log_level: "info"
+  max_history: 1000
+  online_timeout_s: 90
+schema:
+  upstream_host: str
+  upstream_host_header: str
+  log_level: list(trace|debug|info|notice|warning|error|fatal)
+  max_history: int(50,10000)
+  online_timeout_s: int(10,3600)
+host_network: false
+panel_icon: mdi:pool
+homeassistant_api: false
+hassio_api: false
+ingress: false
