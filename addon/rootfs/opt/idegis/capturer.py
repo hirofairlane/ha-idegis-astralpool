@@ -32,6 +32,8 @@ from typing import Any
 
 from aiohttp import ClientSession, ClientTimeout, TCPConnector, web
 
+from codec import decode_field, decode_fields  # noqa: E402
+
 # ---------- Configuration --------------------------------------------------
 
 _OPTIONS_FILE = Path("/data/options.json")
@@ -370,6 +372,8 @@ async def api_state(request: web.Request) -> web.Response:  # noqa: ARG001
             state.last_response.get("endpoint") if state.last_response else None
         ),
         "last_response_fields": state.last_response_fields,
+        "last_fields_decoded": decode_fields(state.last_fields),
+        "last_response_fields_decoded": decode_fields(state.last_response_fields),
         "session_age_seconds": session_age_s,
         # Pump correlation
         "pump_power_w": state.pump_power_w,

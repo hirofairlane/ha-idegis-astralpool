@@ -142,7 +142,56 @@ SENSORS: tuple[IdegisSensorDescription, ...] = (
         value_fn=lambda d: d.get("session_age_seconds"),
         entity_category=EntityCategory.DIAGNOSTIC,
     ),
+    # New in capturer 0.3.0
+    IdegisSensorDescription(
+        key="pump_power",
+        translation_key="pump_power",
+        name="Filter pump power",
+        native_unit_of_measurement="W",
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda d: d.get("pump_power_w"),
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    # New in capturer 0.4.0 — decoded fields
+    IdegisSensorDescription(
+        key="device_serial",
+        translation_key="device_serial",
+        name="Device serial",
+        value_fn=lambda d: (
+            (d.get("last_fields_decoded") or {}).get("TD", {}).get("decoded")
+        ),
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    IdegisSensorDescription(
+        key="li_counter",
+        translation_key="li_counter",
+        name="Request counter",
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        value_fn=lambda d: (
+            (d.get("last_fields_decoded") or {}).get("LI", {}).get("decoded")
+        ),
+    ),
+    IdegisSensorDescription(
+        key="device_clock",
+        translation_key="device_clock",
+        name="Device clock",
+        device_class=SensorDeviceClass.TIMESTAMP,
+        value_fn=lambda d: (
+            (d.get("last_fields_decoded") or {}).get("CD", {}).get("as_iso_utc")
+        ),
+    ),
+    IdegisSensorDescription(
+        key="cloud_clock",
+        translation_key="cloud_clock",
+        name="Cloud clock",
+        device_class=SensorDeviceClass.TIMESTAMP,
+        value_fn=lambda d: (
+            (d.get("last_response_fields_decoded") or {}).get("CD", {}).get("as_iso_utc")
+        ),
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
 )
+
 
 
 async def async_setup_entry(

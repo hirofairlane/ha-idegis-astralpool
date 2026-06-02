@@ -1,5 +1,44 @@
 # Changelog
 
+## 0.4.0 — 2026-06-02
+
+First decoding! The B0 codec uses a base-10 positional integer
+representation with a custom digit alphabet:
+
+    a=0  b=1  c=2  d=3  e=4
+    f=5  U=6  V=7  W=8  X=9
+
+This was inferred from the `CD` field by correlating its values with
+wall-clock timestamps captured at the proxy. The decode is now
+verified against many samples and is exact to the second.
+
+Knowing the alphabet immediately unlocks several fields:
+
+- `CD` = Unix timestamp in seconds, UTC. ('bVWaedfcbc' = 1780435212 =
+  2026-06-02 23:20:12)
+- `LI` = monotonic per-request counter (~1110-1132 in our sample)
+- `CI` = constant 0 (channel index)
+- `TD` = device serial number (13 base-10 digits, e.g. 2101812099010)
+- `9C`, `Jb`, `SI`, `YI`, `Y9`, `DL`, `RB` = single-digit booleans
+- `AJ`, `OI`, `OB`, `TB` = small integers (likely event counters or
+  embedded timestamps)
+
+Several fields (`CY`, `SG`, `9G`, `IT`, `GY`) contain characters that
+are NOT in our base-10 set (`g`, `I`, `O`, `M`, etc.). They use a
+wider alphabet that we have not pinned down yet — almost certainly
+the actual measurement fields (pH, ORP, salt, temperature). They
+need more samples captured with the filter motor actually running
+(`pump_running=true`).
+
+New addon endpoint output:
+
+- `/api/idegis/state` now also returns `last_fields_decoded` and
+  `last_response_fields_decoded`, each field annotated with its
+  human-readable type, description and decoded value.
+
+The codec lives in its own module (`rootfs/opt/idegis/codec.py`) so
+the decoding logic is testable in isolation.
+
 ## 0.3.0 — 2026-06-02
 
 - New: live correlation with Home Assistant. The add-on now polls a HA

@@ -33,7 +33,12 @@
       "sg_raw": {"name": "Campo SG raw"},
       "cy_raw": {"name": "Campo CY raw"},
       "last_response_size": {"name": "Tamaño última respuesta cloud"},
-      "session_age": {"name": "Duración sesión"}
+      "session_age": {"name": "Duración sesión"},
+      "pump_power": {"name": "Potencia bomba filtración"},
+      "device_serial": {"name": "Serial del equipo"},
+      "li_counter": {"name": "Contador de peticiones"},
+      "device_clock": {"name": "Reloj del equipo"},
+      "cloud_clock": {"name": "Reloj del cloud"}
     }
   }
 }
