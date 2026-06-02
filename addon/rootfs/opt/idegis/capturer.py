@@ -42,6 +42,9 @@ DEFAULTS = {
     "log_level": "info",
     "max_history": 1000,
     "online_timeout_s": 90,
+    "pump_power_entity": "sensor.shellypro4pm_30c6f7836a6c_power_3",
+    "pump_running_threshold_w": 100.0,
+    "pump_poll_interval_s": 5,
 }
 
 
@@ -61,6 +64,13 @@ UPSTREAM_HOST = OPTS["upstream_host"]
 UPSTREAM_HOST_HEADER = OPTS["upstream_host_header"]
 MAX_HISTORY = int(OPTS["max_history"])
 ONLINE_TIMEOUT_S = int(OPTS["online_timeout_s"])
+PUMP_ENTITY = OPTS.get("pump_power_entity") or ""
+PUMP_THRESHOLD_W = float(OPTS.get("pump_running_threshold_w") or 100.0)
+PUMP_POLL_S = int(OPTS.get("pump_poll_interval_s") or 5)
+
+# Supervisor injects these when homeassistant_api is true.
+SUPERVISOR_TOKEN = os.environ.get("SUPERVISOR_TOKEN", "")
+HASS_API = "http://supervisor/core/api"
 
 JSONL_PATH = Path("/data/captures/idegis_full.jsonl")
 JSONL_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -107,6 +117,12 @@ class State:
         self.device_id: str | None = None
         self.session_token: str | None = None
         self.first_seen_session: datetime | None = None
+        # Pump correlation (filled by background HA poller)
+        self.pump_power_w: float | None = None
+        self.pump_running: bool = False
+        self.pump_last_check: datetime | None = None
+        self.pump_running_since: datetime | None = None
+        self.pump_entity_state: str | None = None
 
     def ingest(self, record: dict) -> None:
         self.history.append(record)
@@ -274,6 +290,12 @@ async def proxy_handler(request: web.Request) -> web.StreamResponse:
         ),
         "response_fields": response_fields,
         "response_h": response_h,
+        # Correlation snapshot: the chlorinator only sends real telemetry
+        # (write.php with B0+B1+B2) while the filter motor is actually
+        # running, so we tag every record with the latest known pump
+        # power to filter the corpus offline.
+        "pump_power_w": state.pump_power_w,
+        "pump_running": state.pump_running,
     }
     state.ingest(record)
     append_jsonl(record)
@@ -349,6 +371,18 @@ async def api_state(request: web.Request) -> web.Response:  # noqa: ARG001
         ),
         "last_response_fields": state.last_response_fields,
         "session_age_seconds": session_age_s,
+        # Pump correlation
+        "pump_power_w": state.pump_power_w,
+        "pump_running": state.pump_running,
+        "pump_entity": PUMP_ENTITY or None,
+        "pump_entity_state": state.pump_entity_state,
+        "pump_last_check": (
+            state.pump_last_check.isoformat() if state.pump_last_check else None
+        ),
+        "pump_running_seconds": (
+            (datetime.now(timezone.utc) - state.pump_running_since).total_seconds()
+            if state.pump_running_since else None
+        ),
     })
 
 
@@ -427,11 +461,61 @@ async def api_analyze(request: web.Request) -> web.Response:  # noqa: ARG001
 # ---------- App wiring -----------------------------------------------------
 
 
+async def pump_poller(app: web.Application) -> None:
+    """Background task: poll HA Core for the filter pump power and update
+    the global state used to correlate every captured request."""
+    if not PUMP_ENTITY:
+        log.info("pump_power_entity not configured, skipping correlation poller")
+        return
+    if not SUPERVISOR_TOKEN:
+        log.warning("SUPERVISOR_TOKEN missing — homeassistant_api must be true")
+        return
+
+    headers = {
+        "Authorization": f"Bearer {SUPERVISOR_TOKEN}",
+        "Content-Type": "application/json",
+    }
+    url = f"{HASS_API}/states/{PUMP_ENTITY}"
+    log.info("pump correlation: entity=%s threshold=%.1f W poll=%ds",
+             PUMP_ENTITY, PUMP_THRESHOLD_W, PUMP_POLL_S)
+    client: ClientSession = app["http_client"]
+    while True:
+        try:
+            async with client.get(url, headers=headers) as r:
+                if r.status != 200:
+                    log.debug("HA poll %s -> %s", PUMP_ENTITY, r.status)
+                else:
+                    data = await r.json()
+                    raw = data.get("state")
+                    state.pump_entity_state = raw
+                    try:
+                        watts = float(raw)
+                    except (TypeError, ValueError):
+                        watts = None
+                    if watts is not None:
+                        state.pump_power_w = watts
+                        was_running = state.pump_running
+                        state.pump_running = watts >= PUMP_THRESHOLD_W
+                        if state.pump_running and not was_running:
+                            state.pump_running_since = datetime.now(timezone.utc)
+                            log.info("PUMP RUNNING detected (%.1f W >= %.1f W)",
+                                     watts, PUMP_THRESHOLD_W)
+                        elif not state.pump_running and was_running:
+                            state.pump_running_since = None
+                            log.info("pump stopped (%.1f W < %.1f W)",
+                                     watts, PUMP_THRESHOLD_W)
+                    state.pump_last_check = datetime.now(timezone.utc)
+        except Exception as exc:  # noqa: BLE001
+            log.debug("pump poll error: %s", exc)
+        await asyncio.sleep(PUMP_POLL_S)
+
+
 async def on_startup(app: web.Application) -> None:
     timeout = ClientTimeout(total=30, connect=5)
     connector = TCPConnector(limit=8, force_close=False, enable_cleanup_closed=True)
     app["http_client"] = ClientSession(timeout=timeout, connector=connector)
     warm_from_jsonl()
+    app["pump_task"] = asyncio.create_task(pump_poller(app))
     log.info(
         "capturer ready: upstream=%s host=%s online_timeout=%ds",
         UPSTREAM_HOST, UPSTREAM_HOST_HEADER, ONLINE_TIMEOUT_S,
@@ -439,6 +523,9 @@ async def on_startup(app: web.Application) -> None:
 
 
 async def on_cleanup(app: web.Application) -> None:
+    task = app.get("pump_task")
+    if task:
+        task.cancel()
     client: ClientSession = app["http_client"]
     await client.close()
 

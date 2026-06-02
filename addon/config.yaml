@@ -5,7 +5,7 @@ description: >-
   cloud telemetry (Fluidra Multi-Tec platform). Acts as a transparent
   HTTP reverse proxy for api.idegis.net and exposes the decoded state
   on a local JSON API the companion Home Assistant integration consumes.
-version: "0.2.1"
+version: "0.3.0"
 slug: "idegis_capturer"
 init: false
 arch:
@@ -29,14 +29,20 @@ options:
   log_level: "info"
   max_history: 1000
   online_timeout_s: 90
+  pump_power_entity: "sensor.shellypro4pm_30c6f7836a6c_power_3"
+  pump_running_threshold_w: 100
+  pump_poll_interval_s: 5
 schema:
   upstream_host: str
   upstream_host_header: str
   log_level: list(trace|debug|info|notice|warning|error|fatal)
   max_history: int(50,10000)
   online_timeout_s: int(10,3600)
+  pump_power_entity: str?
+  pump_running_threshold_w: float(0,10000)
+  pump_poll_interval_s: int(1,60)
 host_network: false
 panel_icon: mdi:pool
-homeassistant_api: false
+homeassistant_api: true
 hassio_api: false
 ingress: false
