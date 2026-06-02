@@ -4,6 +4,94 @@ Diario cronológico inverso. Entradas más recientes arriba. Castellano.
 
 ---
 
+## 2026-06-02 — Add-on v0.1.0 desplegado en HA prod + switchover desde CT104
+
+Sesión final del día. Sergio prioriza ir directo al setup en add-on para
+no acumular deuda técnica.
+
+**Hecho de cabo a rabo**:
+
+1. Construido el add-on auto-contenido en `addon/`:
+   - `config.yaml` (slug `idegis_capturer`, puertos 80+8765, 5 opciones
+     con schema).
+   - `Dockerfile` (Alpine + nginx + python3 + fastapi + uvicorn).
+   - `build.yaml` (multi-arch sobre `ghcr.io/hassio-addons/base:17.2.0`).
+   - `rootfs/`: nginx.conf con upstream rendereable, s6-overlay v3
+     services para nginx y capturer, cont-init.d que crea
+     `/data/captures` y renderiza el upstream desde las opciones.
+   - `DOCS.md`, `README.md`, `CHANGELOG.md` (inglés).
+   - `docs/10-addon-architecture.md` documentando el stack.
+
+2. Sergio confirma capacidades reales del Neolysis: pH ✓, bomba pH ✓,
+   **caudalímetro ✓**, lámpara UV ✓, electrólisis ✓. Actualizado
+   `docs/01-hardware.md`.
+
+3. Antes del add-on, primer paso intermedio: custom_component HA con
+   12 entidades diagnósticas + 1 binary sensor + DataUpdateCoordinator
+   apuntando a `192.168.1.70:8765` (CT104). Instalado en HA prod via
+   `qm guest exec`, integración creada por API (sin tocar UI), todas
+   las entidades visibles y `online=on` con 494 capturas acumuladas
+   durante la noche.
+
+4. **Bloqueo: HA OS disco lleno** (`/dev/sda8 = 100%`, 0 KB libres).
+   `ha apps install` rechaza la instalación. qemu-guest-agent crashea
+   por el disco lleno.
+
+5. **Resize del disco virtual VM 100**:
+   - `qm resize 100 scsi0 +20G` → 48 GB → 68 GB en Samsung_1tb storage
+     (que tenía 86 GB libres).
+   - `qm reboot` falla (depende del guest agent muerto).
+   - `qm reset 100` (botón reset virtual) → VM arranca, HA OS
+     auto-expande el filesystem en boot.
+   - `/dev/sda8 = 66.2 GB`, 71% usado, **18.4 GB libres**.
+
+6. Primer intento de instalar el add-on: `state: error`,
+   `can't open '/init': Permission denied`. Causa: mi `apparmor.txt`
+   demasiado restrictivo para s6-overlay. Eliminado, ahora usa el perfil
+   default de HA.
+
+7. Segundo intento: nginx exit code 1 al primer arranque. Causa:
+   `/data/captures/` no existía (en HA add-on `/data` es volumen
+   persistente, sobreescribe el `mkdir` del Dockerfile). Movido el
+   `mkdir` a `cont-init.d/10-render-nginx.sh`.
+
+8. Tercer intento: **state=started**. nginx + capturer ambos vivos,
+   uvicorn en 0.0.0.0:8765. `curl http://192.168.1.131:8765/api/idegis/health`
+   responde OK.
+
+9. **Switchover completo**:
+   - DNS override Principal: `api.idegis.net → 192.168.1.131` (HA OS)
+     en lugar de `192.168.1.70` (CT104).
+   - `systemctl disable --now idegis-state.service` en CT104.
+   - Eliminado vhost `idegis-proxy` de nginx CT104 + reload.
+   - Borrada la entry vieja del custom_component (API REST).
+   - Creada nueva entry apuntando a `192.168.1.131:8765`.
+
+10. **Diagnóstico final**: la depuradora encendida via HA marca solo
+    `1.2 W` (la bobina del contactor del Shelly), el motor real no
+    arranca. El Idegis responde a ping pero no inicia conexiones cloud
+    — probable que su control esté off aunque el módulo Ethernet siga
+    standby. No es problema software; requiere intervención física en
+    el cuadro de Sergio.
+
+**Estado final**:
+- Add-on `local_idegis_capturer` instalado, `state: started`.
+- Custom_component `Idegis capturer @ 192.168.1.131` configurado.
+- DNS override apuntando a HA OS.
+- CT104: servicio parado, nginx vhost eliminado.
+- 0 capturas en el nuevo addon (el Idegis no se ha encendido aún).
+- En cuanto el Idegis arranque eléctricamente, el polling empezará a
+  llegar al addon automáticamente (todo el pipeline está listo).
+
+**Pendiente próxima sesión**:
+- Cuando la depuradora arranque de verdad (Sergio en el cuadro o
+  automatización EMHASS que lo encienda con el motor): validar que el
+  addon recibe traffic.
+- Decodificación B0 (sin cambios).
+- Ingress UI dentro del addon para ver capturas en vivo.
+
+---
+
 ## 2026-06-02 — Vía A en marcha: proxy reverso transparente + análisis B0
 
 Permiso ampliado: puedo encender/apagar `switch.depuradora` hasta las 8am.

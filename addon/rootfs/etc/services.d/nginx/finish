@@ -1,4 +1,0 @@
-#!/command/with-contenv bashio
-# Restart the whole container if nginx dies.
-bashio::log.warning "nginx exited with code $1"
-exec /run/s6/basedir/bin/halt

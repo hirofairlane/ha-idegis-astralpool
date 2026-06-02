@@ -1,5 +1,0 @@
-#!/command/with-contenv bashio
-# Run nginx in the foreground; s6-overlay supervises it.
-
-bashio::log.info "Starting nginx reverse proxy on :80"
-exec nginx -c /etc/nginx/nginx.conf

@@ -123,6 +123,25 @@ SENSORS: tuple[IdegisSensorDescription, ...] = (
         value_fn=lambda d: (d.get("last_fields") or {}).get("CY"),
         entity_category=EntityCategory.DIAGNOSTIC,
     ),
+    # New in capturer 0.2.0
+    IdegisSensorDescription(
+        key="last_response_size",
+        translation_key="last_response_size",
+        name="Last cloud response size",
+        native_unit_of_measurement="B",
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda d: d.get("last_response_size_bytes"),
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    IdegisSensorDescription(
+        key="session_age",
+        translation_key="session_age",
+        name="Session age",
+        native_unit_of_measurement="s",
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda d: d.get("session_age_seconds"),
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
 )
 
 

@@ -31,7 +31,9 @@
       "li_raw": {"name": "LI field raw"},
       "cd_raw": {"name": "CD field raw"},
       "sg_raw": {"name": "SG field raw"},
-      "cy_raw": {"name": "CY field raw"}
+      "cy_raw": {"name": "CY field raw"},
+      "last_response_size": {"name": "Last cloud response size"},
+      "session_age": {"name": "Session age"}
     }
   }
 }

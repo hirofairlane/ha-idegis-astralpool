@@ -1,11 +1,8 @@
 #!/command/with-contenv bashio
-# Run the FastAPI capturer service.
+# Run the aiohttp capturer service (proxy on :80, API on :8765).
 
 LEVEL=$(bashio::config 'log_level')
-bashio::log.info "Starting capturer FastAPI on :8765 (log level: ${LEVEL})"
+bashio::log.info "Starting capturer (proxy :80, API :8765, log: ${LEVEL})"
 
 cd /opt/idegis
-exec python3 -m uvicorn capturer:app \
-    --host 0.0.0.0 \
-    --port 8765 \
-    --log-level "${LEVEL}"
+exec python3 capturer.py
