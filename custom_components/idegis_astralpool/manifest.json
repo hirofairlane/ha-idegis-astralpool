@@ -5,12 +5,9 @@
   "config_flow": true,
   "dependencies": [],
   "documentation": "https://github.com/hirofairlane/ha-idegis-astralpool",
-  "homekit": {},
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/hirofairlane/ha-idegis-astralpool/issues",
-  "loggers": ["idegis_astralpool"],
-  "requirements": ["pymodbus>=3.6.0"],
-  "ssdp": [],
-  "version": "0.0.1",
-  "zeroconf": []
+  "loggers": ["custom_components.idegis_astralpool"],
+  "requirements": [],
+  "version": "0.0.2"
 }

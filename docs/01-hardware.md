@@ -35,8 +35,8 @@ following is the expected layout for the `Neo2-24PH/S` SKU:
 | 3 | cl-ppm | Amperometric PPM probe slot present | ⚠ slot only, not populated |
 | 4 | temperature | Temperature measurement | ✅ |
 | 5 | salt | Salt level measurement | ✅ |
-| 6 | uv | UV lamp can be attached | ⚠ depends on sub-SKU |
-| 7 | caudal | m³/h flow measurement | ❌ |
+| 6 | uv | UV lamp can be attached | ✅ (UV lamp present in reference unit) |
+| 7 | caudal | m³/h flow measurement | ✅ (flowmeter present in reference unit) |
 | 8 | pressure | Filter pressure measurement | ❌ |
 | 9 | biopool | Biopool mode | ✅ |
 | 11 | secondary_modbus_slave | Second Modbus slave on PCB | ✅ |

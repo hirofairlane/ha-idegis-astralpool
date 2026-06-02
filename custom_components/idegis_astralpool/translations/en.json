@@ -1,0 +1,37 @@
+{
+  "config": {
+    "step": {
+      "cloud_mitm": {
+        "title": "Idegis cloud-MITM capturer",
+        "description": "Point this to the host running the nginx reverse proxy + idegis-state capturer service.",
+        "data": {
+          "host": "Capturer host",
+          "port": "Capturer port",
+          "scan_interval": "Polling interval (seconds)"
+        }
+      }
+    },
+    "error": {
+      "capturer_unreachable": "Cannot reach the capturer service. Check that idegis-state.service is running."
+    },
+    "abort": {
+      "already_configured": "This capturer is already configured."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "last_seen": {"name": "Last seen"},
+      "age_seconds": {"name": "Seconds since last request"},
+      "polling_rate": {"name": "Polling rate"},
+      "requests_total": {"name": "Captured requests"},
+      "read_count": {"name": "Read.php calls"},
+      "write_count": {"name": "Write.php calls"},
+      "last_endpoint": {"name": "Last endpoint"},
+      "last_upstream_time": {"name": "Last cloud upstream time"},
+      "li_raw": {"name": "LI field raw"},
+      "cd_raw": {"name": "CD field raw"},
+      "sg_raw": {"name": "SG field raw"},
+      "cy_raw": {"name": "CY field raw"}
+    }
+  }
+}

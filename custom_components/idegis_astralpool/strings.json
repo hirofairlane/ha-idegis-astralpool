@@ -1,0 +1,21 @@
+{
+  "config": {
+    "step": {
+      "cloud_mitm": {
+        "title": "Idegis cloud-MITM capturer",
+        "description": "Point this to the host running the nginx reverse proxy + idegis-state capturer service (default: CT104 at 192.168.1.70 in the reference setup).",
+        "data": {
+          "host": "Capturer host",
+          "port": "Capturer port",
+          "scan_interval": "Polling interval (seconds)"
+        }
+      }
+    },
+    "error": {
+      "capturer_unreachable": "Cannot reach the capturer service. Check that idegis-state.service is running."
+    },
+    "abort": {
+      "already_configured": "This capturer is already configured."
+    }
+  }
+}
