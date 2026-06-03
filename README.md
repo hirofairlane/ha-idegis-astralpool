@@ -109,7 +109,8 @@ acceptable to the user.
 │   ├── 08-cloud-api-discovery.md   cloud HTTP protocol of api.idegis.net
 │   ├── 09-roadmap.md          phased plan toward HACS default
 │   ├── 10-addon-architecture.md   the HA add-on stack (current recommendation)
-│   └── 11-codec-and-decoded-fields.md   reverse-engineered B0 codec and field semantics
+│   ├── 11-codec-and-decoded-fields.md   reverse-engineered B0 codec and field semantics
+│   └── 12-lovelace-cards.md   ready-to-paste Lovelace YAML for the exposed entities
 ├── addon/                     ← HA Add-on (nginx + capturer, self-contained)
 │   ├── config.yaml            add-on manifest
 │   ├── Dockerfile
