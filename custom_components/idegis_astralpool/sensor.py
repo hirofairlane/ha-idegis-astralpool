@@ -190,6 +190,27 @@ SENSORS: tuple[IdegisSensorDescription, ...] = (
         ),
         entity_category=EntityCategory.DIAGNOSTIC,
     ),
+    # New in capturer 0.5.0 — actual water measurements
+    IdegisSensorDescription(
+        key="ph",
+        translation_key="ph",
+        name="pH",
+        native_unit_of_measurement="pH",
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
+        value_fn=lambda d: (d.get("measurements") or {}).get("ph", {}).get("value"),
+    ),
+    IdegisSensorDescription(
+        key="salinity",
+        translation_key="salinity",
+        name="Salinity",
+        native_unit_of_measurement="g/L",
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
+        value_fn=lambda d: (
+            (d.get("measurements") or {}).get("salinity", {}).get("value")
+        ),
+    ),
 )
 
 

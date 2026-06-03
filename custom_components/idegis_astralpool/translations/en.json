@@ -38,7 +38,9 @@
       "device_serial": {"name": "Device serial"},
       "li_counter": {"name": "Request counter"},
       "device_clock": {"name": "Device clock"},
-      "cloud_clock": {"name": "Cloud clock"}
+      "cloud_clock": {"name": "Cloud clock"},
+      "ph": {"name": "pH"},
+      "salinity": {"name": "Salinity"}
     }
   }
 }

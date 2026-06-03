@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.5.0 — 2026-06-03
+
+Second decoding milestone — actual water measurements out.
+
+After capturing 1000+ samples (318 writes) and running a per-field
+range analysis, three more characters of the codec fell out:
+
+- **`g` is the decimal point**.
+- Trailing uppercase letters that are NOT in the digit set are
+  **unit markers** (M, I, N, R, ...).
+
+That immediately unlocks two real measurements:
+
+- **`SG` = water pH** (values 5.72 – 7.51 across the corpus). Sample:
+  `aVgef` -> `07.45` -> pH 7.45.
+- **`IT` = salinity in g/L** (0.0 – 3.8, trailing 'M' is the unit
+  marker — matches the Neolysis low-salinity range). Sample:
+  `abgfM` -> `01.5M` -> 1.5 g/L.
+
+These two are now first-class fields in `codec.py` with a `measure`
+type and a unit, and `/api/idegis/state` exposes a new top-level
+`measurements` block summarising them:
+
+    {
+      "measurements": {
+        "ph": {"value": 7.45, "unit": "pH"},
+        "salinity": {"value": 1.5, "unit": "g/L"}
+      }
+    }
+
+This is the corpus before the filter motor was confirmed to be
+running, so the values may not match the operational regime. More
+captures with `pump_running=true` should let us pin down ORP,
+temperature, production% and the remaining unknown fields (CY, 9G,
+GY, MG, PG, CJ, CK, CC, C7, AJ).
+
 ## 0.4.0 — 2026-06-02
 
 First decoding! The B0 codec uses a base-10 positional integer
