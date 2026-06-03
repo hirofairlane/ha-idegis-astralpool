@@ -40,7 +40,8 @@
       "device_clock": {"name": "Device clock"},
       "cloud_clock": {"name": "Cloud clock"},
       "ph": {"name": "pH"},
-      "salinity": {"name": "Salinity"}
+      "salinity": {"name": "Salinity"},
+      "water_temperature": {"name": "Water temperature"}
     }
   }
 }

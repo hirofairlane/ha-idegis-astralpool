@@ -211,6 +211,18 @@ SENSORS: tuple[IdegisSensorDescription, ...] = (
             (d.get("measurements") or {}).get("salinity", {}).get("value")
         ),
     ),
+    IdegisSensorDescription(
+        key="water_temperature",
+        translation_key="water_temperature",
+        name="Water temperature",
+        device_class=SensorDeviceClass.TEMPERATURE,
+        native_unit_of_measurement="°C",
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=1,
+        value_fn=lambda d: (
+            (d.get("measurements") or {}).get("temperature", {}).get("value")
+        ),
+    ),
 )
 
 

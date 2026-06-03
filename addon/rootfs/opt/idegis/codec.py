@@ -27,6 +27,7 @@ Field semantics (confirmed/strong):
     CD = Unix timestamp seconds (UTC)
     SG = water pH (decimal, no marker)
     IT = water salinity g/L (decimal, marker 'M')
+    CY = water temperature °C (decimal, marker 'I')
     9C / Jb / SI / YI / Y9 / DL / RB = single-digit booleans
     AJ / OI / OB / TB / NB / ND / MK = various counters
     YD = single uppercase letter, looks categorical (a, N, R seen)
@@ -121,7 +122,7 @@ FIELDS_INFO: dict[str, dict[str, Any]] = {
     "ND": {"type": "counter", "name": "counter_ND", "unit": None},
     "MK": {"type": "counter", "name": "counter_MK", "unit": None},
     "YD": {"type": "category", "name": "category_YD", "unit": None},
-    "CY": {"type": "measure_unknown", "name": "measure_CY", "unit": None},
+    "CY": {"type": "measure", "name": "temperature", "unit": "°C"},
     "9G": {"type": "unknown", "name": "field_9G", "unit": None},
     "GY": {"type": "unknown", "name": "field_GY", "unit": None},
     "MG": {"type": "unknown", "name": "field_MG", "unit": None},

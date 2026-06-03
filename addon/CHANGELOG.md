@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.5.1 — 2026-06-03
+
+- `CY` field decoded as **water temperature in °C** (decimal, trailing
+  unit marker 'I'). Verified by:
+  - Range 24.6 .. 34.2°C across 79 samples, with 0.2°C step.
+  - Clear day/night cycle in the captured corpus (32-34°C around
+    23:00 UTC, dropping to 24-25°C by 07:00 UTC).
+  - Plausible for a probe in the equipment-room bypass loop where
+    the water cools off compared to the 37°C indoor pool basin.
+- One side observation while correlating with SG (pH): the pH dropped
+  to 5.76 around 23:00-01:00 UTC while the pump wasn't running. Likely
+  an overdose by the pH-minus pump with no flow. Worth checking the
+  pumpstop logic.
+
 ## 0.5.0 — 2026-06-03
 
 Second decoding milestone — actual water measurements out.

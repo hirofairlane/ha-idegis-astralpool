@@ -9,5 +9,5 @@
   "issue_tracker": "https://github.com/hirofairlane/ha-idegis-astralpool/issues",
   "loggers": ["custom_components.idegis_astralpool"],
   "requirements": [],
-  "version": "0.0.5"
+  "version": "0.0.6"
 }
