@@ -107,7 +107,19 @@ REQ_RE = re.compile(r"^/interface/(?P<endpoint>\w+)\.php$")
 # ---------- In-memory state ------------------------------------------------
 
 
+SESSION_IDLE_TIMEOUT_S = 300  # 5 min of silence ends a session
+
+
 class State:
+    @staticmethod
+    def _empty_session() -> dict[str, Any]:
+        return {
+            "start_ts": None,
+            "last_ts": None,
+            "n_writes": 0,
+            "measurements": {},  # metric -> {n, sum, min, max, last}
+        }
+
     def __init__(self) -> None:
         self.history: deque[dict] = deque(maxlen=MAX_HISTORY)
         self.read_count = 0
@@ -122,6 +134,14 @@ class State:
         # populated when individual writes only carry a subset.
         self.sticky_fields: dict[str, str] = {}
         self.sticky_field_ts: dict[str, datetime] = {}
+        # Session tracking: a 'session' is a contiguous stretch of
+        # write.php requests carrying measurements. We open one when a
+        # measurement-bearing write arrives after >IDLE_S of silence,
+        # accumulate per-metric samples while it stays active, and
+        # close it (stashing the stats into `last_session_closed`)
+        # when no new measurements arrive for IDLE_S seconds.
+        self.current_session: dict[str, Any] = self._empty_session()
+        self.last_session_closed: dict[str, Any] | None = None
         self.last_response: dict | None = None  # body of latest cloud response
         self.last_response_fields: dict[str, str] = {}
         self.device_id: str | None = None
@@ -160,6 +180,74 @@ class State:
                         continue
                     self.sticky_fields[k] = v
                     self.sticky_field_ts[k] = ts
+                # Session tracking. Decode the measurements that this
+                # write carries and accumulate them into the open
+                # session (or open a new one).
+                ms = summarise_measurements(decode_fields(fields))
+                if ms:
+                    self._roll_session(ts)
+                    self.current_session["last_ts"] = ts
+                    if self.current_session["start_ts"] is None:
+                        self.current_session["start_ts"] = ts
+                    self.current_session["n_writes"] += 1
+                    for name, payload in ms.items():
+                        val = payload.get("value")
+                        if val is None:
+                            continue
+                        agg = self.current_session["measurements"].setdefault(
+                            name,
+                            {"n": 0, "sum": 0.0, "min": val, "max": val,
+                             "last": val, "unit": payload.get("unit")},
+                        )
+                        agg["n"] += 1
+                        agg["sum"] += val
+                        agg["min"] = min(agg["min"], val)
+                        agg["max"] = max(agg["max"], val)
+                        agg["last"] = val
+
+    def _roll_session(self, ts: datetime) -> None:
+        """Close the current session if it's been idle too long."""
+        last = self.current_session.get("last_ts")
+        if last is None:
+            return
+        if (ts - last).total_seconds() < SESSION_IDLE_TIMEOUT_S:
+            return
+        # Idle too long — snapshot and reset.
+        self.last_session_closed = self._snapshot_session(self.current_session)
+        self.current_session = self._empty_session()
+
+    @staticmethod
+    def _snapshot_session(s: dict[str, Any]) -> dict[str, Any]:
+        out = {
+            "start_ts": s["start_ts"].isoformat() if s["start_ts"] else None,
+            "last_ts": s["last_ts"].isoformat() if s["last_ts"] else None,
+            "duration_s": (
+                (s["last_ts"] - s["start_ts"]).total_seconds()
+                if s["start_ts"] and s["last_ts"] else None
+            ),
+            "n_writes": s["n_writes"],
+            "measurements": {},
+        }
+        for name, agg in s["measurements"].items():
+            n = agg["n"]
+            out["measurements"][name] = {
+                "n": n,
+                "avg": agg["sum"] / n if n else None,
+                "min": agg["min"],
+                "max": agg["max"],
+                "last": agg["last"],
+                "unit": agg.get("unit"),
+            }
+        return out
+
+    def close_session_if_idle(self, now: datetime) -> None:
+        """External hook: called periodically by a background task."""
+        s = self.current_session
+        if s.get("last_ts") is None or s["n_writes"] == 0:
+            return
+        if (now - s["last_ts"]).total_seconds() >= SESSION_IDLE_TIMEOUT_S:
+            self.last_session_closed = self._snapshot_session(s)
+            self.current_session = self._empty_session()
 
         if record.get("response_body_b64"):
             self.last_response = {
@@ -395,6 +483,8 @@ async def api_state(request: web.Request) -> web.Response:  # noqa: ARG001
         "measurements": summarise_measurements(
             decode_fields(state.sticky_fields)
         ),
+        "current_session": State._snapshot_session(state.current_session),
+        "last_session": state.last_session_closed,
         "session_age_seconds": session_age_s,
         # Pump correlation
         "pump_power_w": state.pump_power_w,
@@ -535,12 +625,23 @@ async def pump_poller(app: web.Application) -> None:
         await asyncio.sleep(PUMP_POLL_S)
 
 
+async def session_closer(app: web.Application) -> None:
+    """Periodically check whether the current session has gone idle."""
+    while True:
+        try:
+            state.close_session_if_idle(datetime.now(timezone.utc))
+        except Exception:  # noqa: BLE001
+            pass
+        await asyncio.sleep(30)
+
+
 async def on_startup(app: web.Application) -> None:
     timeout = ClientTimeout(total=30, connect=5)
     connector = TCPConnector(limit=8, force_close=False, enable_cleanup_closed=True)
     app["http_client"] = ClientSession(timeout=timeout, connector=connector)
     warm_from_jsonl()
     app["pump_task"] = asyncio.create_task(pump_poller(app))
+    app["session_task"] = asyncio.create_task(session_closer(app))
     log.info(
         "capturer ready: upstream=%s host=%s online_timeout=%ds",
         UPSTREAM_HOST, UPSTREAM_HOST_HEADER, ONLINE_TIMEOUT_S,
@@ -548,9 +649,10 @@ async def on_startup(app: web.Application) -> None:
 
 
 async def on_cleanup(app: web.Application) -> None:
-    task = app.get("pump_task")
-    if task:
-        task.cancel()
+    for k in ("pump_task", "session_task"):
+        t = app.get(k)
+        if t:
+            t.cancel()
     client: ClientSession = app["http_client"]
     await client.close()
 

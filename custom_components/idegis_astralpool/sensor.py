@@ -234,6 +234,89 @@ SENSORS: tuple[IdegisSensorDescription, ...] = (
             (d.get("measurements") or {}).get("production_percent", {}).get("value")
         ),
     ),
+    # Session sensors (capturer v0.6.0)
+    IdegisSensorDescription(
+        key="last_session_ph_avg",
+        translation_key="last_session_ph_avg",
+        name="Last session pH avg",
+        native_unit_of_measurement="pH",
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
+        value_fn=lambda d: (
+            ((d.get("last_session") or {}).get("measurements", {}) or {})
+            .get("ph", {}).get("avg")
+        ),
+    ),
+    IdegisSensorDescription(
+        key="last_session_temperature_avg",
+        translation_key="last_session_temperature_avg",
+        name="Last session temperature avg",
+        device_class=SensorDeviceClass.TEMPERATURE,
+        native_unit_of_measurement="°C",
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=1,
+        value_fn=lambda d: (
+            ((d.get("last_session") or {}).get("measurements", {}) or {})
+            .get("temperature", {}).get("avg")
+        ),
+    ),
+    IdegisSensorDescription(
+        key="last_session_salinity_avg",
+        translation_key="last_session_salinity_avg",
+        name="Last session salinity avg",
+        native_unit_of_measurement="g/L",
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
+        value_fn=lambda d: (
+            ((d.get("last_session") or {}).get("measurements", {}) or {})
+            .get("salinity", {}).get("avg")
+        ),
+    ),
+    IdegisSensorDescription(
+        key="last_session_production_avg",
+        translation_key="last_session_production_avg",
+        name="Last session production avg",
+        native_unit_of_measurement="%",
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=0,
+        value_fn=lambda d: (
+            ((d.get("last_session") or {}).get("measurements", {}) or {})
+            .get("production_percent", {}).get("avg")
+        ),
+    ),
+    IdegisSensorDescription(
+        key="last_session_duration",
+        translation_key="last_session_duration",
+        name="Last session duration",
+        native_unit_of_measurement="s",
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda d: (d.get("last_session") or {}).get("duration_s"),
+    ),
+    IdegisSensorDescription(
+        key="last_session_n_writes",
+        translation_key="last_session_n_writes",
+        name="Last session writes",
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda d: (d.get("last_session") or {}).get("n_writes"),
+    ),
+    IdegisSensorDescription(
+        key="last_session_end",
+        translation_key="last_session_end",
+        name="Last session end",
+        device_class=SensorDeviceClass.TIMESTAMP,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda d: (d.get("last_session") or {}).get("last_ts"),
+    ),
+    IdegisSensorDescription(
+        key="current_session_writes",
+        translation_key="current_session_writes",
+        name="Current session writes",
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda d: (d.get("current_session") or {}).get("n_writes"),
+    ),
 )
 
 

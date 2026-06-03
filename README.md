@@ -110,7 +110,10 @@ acceptable to the user.
 │   ├── 09-roadmap.md          phased plan toward HACS default
 │   ├── 10-addon-architecture.md   the HA add-on stack (current recommendation)
 │   ├── 11-codec-and-decoded-fields.md   reverse-engineered B0 codec and field semantics
-│   └── 12-lovelace-cards.md   ready-to-paste Lovelace YAML for the exposed entities
+│   ├── 12-lovelace-cards.md   ready-to-paste Lovelace YAML for the exposed entities
+│   └── 13-alerts-and-jarvis.md  two-layer alerts (HA native + Jarvis qualitative)
+├── ha-packages/
+│   └── idegis_alerts.yaml     ready-to-include HA alert pack (Telegram)
 ├── addon/                     ← HA Add-on (nginx + capturer, self-contained)
 │   ├── config.yaml            add-on manifest
 │   ├── Dockerfile

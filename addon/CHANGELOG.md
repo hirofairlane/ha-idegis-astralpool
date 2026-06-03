@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.6.0 — 2026-06-03
+
+- Session tracking. A *session* is a contiguous stretch of write.php
+  requests that carry measurements. The addon now keeps per-session
+  aggregates for every metric (n_samples, avg, min, max, last,
+  duration). Sessions auto-close after 5 minutes of measurement silence.
+- `/api/idegis/state` now also exposes:
+  - `current_session`: open session in progress
+  - `last_session`: snapshot of the last closed session
+- A background asyncio task ticks every 30 s to roll sessions over.
+
+These are the building blocks behind the new "session" sensors in the
+companion integration (pH avg / temp avg / salinity avg / production
+avg / session duration, etc.) — much more useful than the instant
+values because the chlorinator only reports while it is alimented.
+
 ## 0.5.4 — 2026-06-03
 
 - Field `GY` declared as **chlorine production %** based on its

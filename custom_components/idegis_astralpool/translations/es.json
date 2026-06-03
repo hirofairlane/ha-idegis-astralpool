@@ -42,7 +42,15 @@
       "ph": {"name": "pH"},
       "salinity": {"name": "Salinidad"},
       "water_temperature": {"name": "Temperatura agua"},
-      "production_percent": {"name": "Producción cloro"}
+      "production_percent": {"name": "Producción cloro"},
+      "last_session_ph_avg": {"name": "Última sesión pH media"},
+      "last_session_temperature_avg": {"name": "Última sesión temperatura media"},
+      "last_session_salinity_avg": {"name": "Última sesión salinidad media"},
+      "last_session_production_avg": {"name": "Última sesión producción media"},
+      "last_session_duration": {"name": "Última sesión duración"},
+      "last_session_n_writes": {"name": "Última sesión escrituras"},
+      "last_session_end": {"name": "Última sesión fin"},
+      "current_session_writes": {"name": "Sesión actual escrituras"}
     }
   }
 }

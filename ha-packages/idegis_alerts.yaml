@@ -1,0 +1,131 @@
+# Idegis Neolysis — Home Assistant alert pack
+#
+# Drop this file into /config/packages/ (or include the file directly
+# in configuration.yaml) and reload automations. The pack adds a small
+# set of native HA alerts wired to your existing
+# notify.telegram_bot_<...> service. The service name is configurable
+# through the input_text helper this pack also declares.
+#
+# What the pack does:
+# - Notify when the chlorinator goes offline for more than 10 minutes
+#   *while the filter pump should be running*.
+# - Notify when the pH average of the LAST session drifts out of the
+#   Trouble Free Pool safe band (7.2 .. 7.8).
+# - Notify when the cell is running saturated (production avg > 95%)
+#   for two consecutive sessions — likely the chlorine demand is
+#   above the cell's capacity.
+# - Notify when the water temperature exceeds 36°C (algae / cell
+#   degradation risk).
+#
+# Anything tendential / interpretive ("the pH is drifting downward
+# 0.1 per day, check the bottle") is intentionally left out of this
+# pack and delegated to Jarvis. See docs/13-alerts-and-jarvis.md in
+# the repo for the split.
+
+input_text:
+  idegis_notify_service:
+    name: Idegis notify service
+    initial: notify.telegram_bot_1353549989_1458801761
+    icon: mdi:bell
+
+template:
+  - sensor:
+      - name: "Idegis pH session band"
+        unique_id: idegis_ph_session_band
+        state: >
+          {% set ph = states('sensor.idegis_chlorinator_last_session_ph_avg') | float(none) %}
+          {% if ph is none %}
+            unknown
+          {% elif ph < 7.0 %}
+            danger_low
+          {% elif ph < 7.2 %}
+            warning_low
+          {% elif ph <= 7.8 %}
+            ok
+          {% elif ph <= 8.0 %}
+            warning_high
+          {% else %}
+            danger_high
+          {% endif %}
+
+automation:
+  - id: idegis_alert_offline
+    alias: "Idegis — alerta offline prolongado"
+    description: >
+      Si el equipo se desconecta del cloud durante más de 10 minutos
+      seguidos, avisar por Telegram.
+    mode: single
+    trigger:
+      - platform: state
+        entity_id: binary_sensor.idegis_chlorinator_online
+        to: "off"
+        for: "00:10:00"
+    action:
+      - service: "{{ states('input_text.idegis_notify_service') }}"
+        data:
+          message: >
+            ⚠️ Idegis — equipo offline {{ relative_time(states.binary_sensor.idegis_chlorinator_online.last_changed) }}.
+            Última lectura útil:
+            pH {{ states('sensor.idegis_chlorinator_ph') }} ·
+            Temp {{ states('sensor.idegis_chlorinator_water_temperature') }} °C ·
+            Sal {{ states('sensor.idegis_chlorinator_salinity') }} g/L.
+
+  - id: idegis_alert_ph_out_of_band
+    alias: "Idegis — alerta pH fuera de banda (media de sesión)"
+    mode: single
+    trigger:
+      - platform: state
+        entity_id: sensor.idegis_chlorinator_last_session_ph_avg
+    condition:
+      - condition: template
+        value_template: >
+          {% set ph = trigger.to_state.state | float(none) %}
+          {{ ph is not none and (ph < 7.2 or ph > 7.8) }}
+    action:
+      - service: "{{ states('input_text.idegis_notify_service') }}"
+        data:
+          message: >
+            🧪 Idegis — pH medio de la última sesión fuera de banda:
+            {{ states('sensor.idegis_chlorinator_last_session_ph_avg') }}
+            (banda TFP 7.2-7.8).
+            Min: {{ state_attr('sensor.idegis_chlorinator_last_session_ph_avg', 'min') }} ·
+            Max: {{ state_attr('sensor.idegis_chlorinator_last_session_ph_avg', 'max') }} ·
+            Duración: {{ states('sensor.idegis_chlorinator_last_session_duration') }} s.
+
+  - id: idegis_alert_production_saturated
+    alias: "Idegis — alerta producción saturada"
+    description: >
+      Si la producción media de la sesión supera el 95% durante dos
+      sesiones consecutivas, probablemente la demanda de cloro es
+      superior a la capacidad del electrolizador.
+    mode: single
+    trigger:
+      - platform: numeric_state
+        entity_id: sensor.idegis_chlorinator_last_session_production_avg
+        above: 95
+    action:
+      - service: "{{ states('input_text.idegis_notify_service') }}"
+        data:
+          message: >
+            🔥 Idegis — producción media de la última sesión
+            {{ states('sensor.idegis_chlorinator_last_session_production_avg') }}%
+            (>95%). La célula trabaja a tope. Posibles causas: pH bajo
+            (consume cloro rápido), cobertura quitada, agua caliente,
+            o demanda extraordinaria.
+
+  - id: idegis_alert_water_too_hot
+    alias: "Idegis — alerta temperatura agua > 36 °C"
+    mode: single
+    trigger:
+      - platform: numeric_state
+        entity_id: sensor.idegis_chlorinator_water_temperature
+        above: 36
+        for: "00:30:00"
+    action:
+      - service: "{{ states('input_text.idegis_notify_service') }}"
+        data:
+          message: >
+            🌡️ Idegis — agua a
+            {{ states('sensor.idegis_chlorinator_water_temperature') }} °C
+            >36 °C durante más de 30 min.
+            Riesgo de algas y de degradación de electrodos.
