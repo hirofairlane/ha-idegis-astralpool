@@ -45,7 +45,7 @@ DEFAULTS = {
     "max_history": 1000,
     "online_timeout_s": 90,
     "pump_power_entity": "sensor.shellypro4pm_30c6f7836a6c_power_3",
-    "pump_running_threshold_w": 100.0,
+    "pump_running_threshold_w": 1.0,
     "pump_poll_interval_s": 5,
 }
 
@@ -107,7 +107,11 @@ REQ_RE = re.compile(r"^/interface/(?P<endpoint>\w+)\.php$")
 # ---------- In-memory state ------------------------------------------------
 
 
-SESSION_IDLE_TIMEOUT_S = 300  # 5 min of silence ends a session
+SESSION_IDLE_TIMEOUT_S = 1800  # 30 min fallback only (idle close)
+# A session is primarily delimited by the pump_running edges (the
+# chlorinator keeps sending writes with measurements even on standby,
+# so silence-based closing is unreliable). The timeout above only
+# kicks in when there are no pump_running transitions for that long.
 
 
 class State:
@@ -248,6 +252,16 @@ class State:
         if (now - s["last_ts"]).total_seconds() >= SESSION_IDLE_TIMEOUT_S:
             self.last_session_closed = self._snapshot_session(s)
             self.current_session = self._empty_session()
+
+    def force_close_session(self) -> None:
+        """External hook: close the current session immediately
+        (called when the pump goes off — pump-edge has priority over
+        the idle-timeout heuristic)."""
+        s = self.current_session
+        if s.get("last_ts") is None or s["n_writes"] == 0:
+            return
+        self.last_session_closed = self._snapshot_session(s)
+        self.current_session = self._empty_session()
 
         if record.get("response_body_b64"):
             self.last_response = {
@@ -617,8 +631,11 @@ async def pump_poller(app: web.Application) -> None:
                                      watts, PUMP_THRESHOLD_W)
                         elif not state.pump_running and was_running:
                             state.pump_running_since = None
-                            log.info("pump stopped (%.1f W < %.1f W)",
+                            log.info("pump stopped (%.1f W < %.1f W) — closing session",
                                      watts, PUMP_THRESHOLD_W)
+                            # Pump just went off — close the current
+                            # session whatever its idle status.
+                            state.force_close_session()
                     state.pump_last_check = datetime.now(timezone.utc)
         except Exception as exc:  # noqa: BLE001
             log.debug("pump poll error: %s", exc)

@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.6.1 — 2026-06-03
+
+- Reworked session boundaries. The chlorinator keeps emitting writes
+  with measurements even when the filter pump is off (it has an
+  internal standby), so the previous "5 minutes of measurement
+  silence" rule never fired on the reference installation and the
+  session never closed.
+  - New rule: the session is delimited by **pump_running edges**.
+    The pump_poller now triggers `force_close_session()` on the
+    falling edge (pump goes from running to stopped).
+  - Default `pump_running_threshold_w` lowered from 100 W to 1 W so
+    the contactor coil draw is enough to flag the session active.
+    Users who can read the real motor current can raise it back.
+  - `SESSION_IDLE_TIMEOUT_S` bumped to 30 min as a hard fallback for
+    setups where the pump poller is misconfigured or HA itself is
+    down — it should never fire in normal operation.
+
 ## 0.6.0 — 2026-06-03
 
 - Session tracking. A *session* is a contiguous stretch of write.php
