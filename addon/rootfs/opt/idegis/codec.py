@@ -124,7 +124,7 @@ FIELDS_INFO: dict[str, dict[str, Any]] = {
     "YD": {"type": "category", "name": "category_YD", "unit": None},
     "CY": {"type": "measure", "name": "temperature", "unit": "°C"},
     "9G": {"type": "unknown", "name": "field_9G", "unit": None},
-    "GY": {"type": "unknown", "name": "field_GY", "unit": None},
+    "GY": {"type": "measure", "name": "production_percent", "unit": "%"},
     "MG": {"type": "unknown", "name": "field_MG", "unit": None},
     "PG": {"type": "unknown", "name": "field_PG", "unit": None},
     "CJ": {"type": "unknown", "name": "field_CJ", "unit": None},

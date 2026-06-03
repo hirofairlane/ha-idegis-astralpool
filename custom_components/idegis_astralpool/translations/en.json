@@ -41,7 +41,8 @@
       "cloud_clock": {"name": "Cloud clock"},
       "ph": {"name": "pH"},
       "salinity": {"name": "Salinity"},
-      "water_temperature": {"name": "Water temperature"}
+      "water_temperature": {"name": "Water temperature"},
+      "production_percent": {"name": "Chlorine production"}
     }
   }
 }

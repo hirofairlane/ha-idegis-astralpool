@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.5.4 — 2026-06-03
+
+- Field `GY` declared as **chlorine production %** based on its
+  observed range (0..99 in increments of 1, pure-base10 alphabet,
+  same shape as the production_pct_now register on the Modbus side).
+- Companion integration v0.0.7 adds
+  `sensor.idegis_chlorinator_chlorine_production` (%, precision 0).
+
+## 0.5.3 — 2026-06-03
+
+- Real fix: not every `write.php` carries every field. The first batch
+  may include SG/IT/CY, the next one just counters, the next one a
+  different subset. We now maintain a **sticky per-field state**: each
+  Bn key keeps its last-known value indefinitely, regardless of which
+  request carried it.
+  - `/api/idegis/state` -> `measurements` is now computed from the
+    sticky state. pH, salinity and temperature stay valid across the
+    quiet intervals where the chlorinator only ships a counter-only
+    write.
+  - `/api/idegis/state` -> `sticky_fields_decoded` exposes the full
+    sticky view, with per-field last-update timestamps available
+    indirectly via the per-record history.
+
+## 0.5.2 — 2026-06-03
+
+- Bug fix: the `measurements` block went blank every time a `read.php`
+  arrived, because measurements only ride on `write.php` requests. We
+  now keep a separate `last_write_fields` snapshot that is only
+  updated on writes, and the API surface uses that to compute
+  measurements. The `last_fields` snapshot still reflects the very
+  last request of any kind (used by raw and counter sensors).
+
 ## 0.5.1 — 2026-06-03
 
 - `CY` field decoded as **water temperature in °C** (decimal, trailing

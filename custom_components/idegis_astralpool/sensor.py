@@ -223,6 +223,17 @@ SENSORS: tuple[IdegisSensorDescription, ...] = (
             (d.get("measurements") or {}).get("temperature", {}).get("value")
         ),
     ),
+    IdegisSensorDescription(
+        key="production_percent",
+        translation_key="production_percent",
+        name="Chlorine production",
+        native_unit_of_measurement="%",
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=0,
+        value_fn=lambda d: (
+            (d.get("measurements") or {}).get("production_percent", {}).get("value")
+        ),
+    ),
 )
 
 

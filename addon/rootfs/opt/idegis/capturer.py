@@ -114,6 +114,14 @@ class State:
         self.write_count = 0
         self.last_seen: datetime | None = None
         self.last_fields: dict[str, str] = {}
+        # Only updated when a write.php arrives (where measurements live)
+        self.last_write_fields: dict[str, str] = {}
+        # Sticky per-field last-known value: each Bn field keeps the
+        # most recent value we have ever seen for it, even if the
+        # next requests omit it. This is how we keep the measurements
+        # populated when individual writes only carry a subset.
+        self.sticky_fields: dict[str, str] = {}
+        self.sticky_field_ts: dict[str, datetime] = {}
         self.last_response: dict | None = None  # body of latest cloud response
         self.last_response_fields: dict[str, str] = {}
         self.device_id: str | None = None
@@ -144,6 +152,14 @@ class State:
             self.read_count += 1
         elif ep == "write":
             self.write_count += 1
+            if fields:
+                self.last_write_fields = fields
+                # Merge each field individually into sticky state.
+                for k, v in fields.items():
+                    if k.startswith("__"):
+                        continue
+                    self.sticky_fields[k] = v
+                    self.sticky_field_ts[k] = ts
 
         if record.get("response_body_b64"):
             self.last_response = {
@@ -374,7 +390,11 @@ async def api_state(request: web.Request) -> web.Response:  # noqa: ARG001
         "last_response_fields": state.last_response_fields,
         "last_fields_decoded": decode_fields(state.last_fields),
         "last_response_fields_decoded": decode_fields(state.last_response_fields),
-        "measurements": summarise_measurements(decode_fields(state.last_fields)),
+        "last_write_fields_decoded": decode_fields(state.last_write_fields),
+        "sticky_fields_decoded": decode_fields(state.sticky_fields),
+        "measurements": summarise_measurements(
+            decode_fields(state.sticky_fields)
+        ),
         "session_age_seconds": session_age_s,
         # Pump correlation
         "pump_power_w": state.pump_power_w,
