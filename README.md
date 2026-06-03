@@ -108,7 +108,8 @@ acceptable to the user.
 │   ├── 07-water-chemistry.md  Trouble Free Pool targets for SWG + UV
 │   ├── 08-cloud-api-discovery.md   cloud HTTP protocol of api.idegis.net
 │   ├── 09-roadmap.md          phased plan toward HACS default
-│   └── 10-addon-architecture.md   the HA add-on stack (current recommendation)
+│   ├── 10-addon-architecture.md   the HA add-on stack (current recommendation)
+│   └── 11-codec-and-decoded-fields.md   reverse-engineered B0 codec and field semantics
 ├── addon/                     ← HA Add-on (nginx + capturer, self-contained)
 │   ├── config.yaml            add-on manifest
 │   ├── Dockerfile
@@ -131,11 +132,18 @@ acceptable to the user.
 - ✅ Modbus v1.62 register map translated to markdown.
 - ✅ Idegis/AstralPool equivalence confirmed and documented.
 - ✅ Device identified on LAN (MAC `68:27:19:DA:5A:53`, OUI Microchip).
-- ✅ Cloud protocol partially reverse-engineered: HTTP plain, no TLS,
+- ✅ Cloud protocol fully reverse-engineered: HTTP plain, no TLS,
       polling `api.idegis.net/interface/{read,write}.php?B0=...&H=...`.
 - ✅ MITM via DNS override demonstrated end-to-end.
-- 🚧 `B0` payload encoding and `H` hash formula being decoded.
-- 🚧 ESPHome config skeleton, not yet flashed onto hardware.
+- ✅ **B0 codec decoded** — base-10 custom alphabet
+      (`a..f UVWX → 0..9`), `g` as decimal point, trailing uppercase as
+      unit markers. See [docs/11-codec-and-decoded-fields.md](docs/11-codec-and-decoded-fields.md).
+- ✅ **Live measurements in HA**: pH, water temperature, salinity,
+      chlorine production %.
+- 🚧 Hash `H` formula still needed for **forging** requests
+      (bidirectional control via the cloud channel).
+- 🚧 ESPHome config skeleton, not yet flashed onto hardware (Modbus
+      RTU path, still relevant as the only way to set setpoints).
 - 🚧 HACS integration scaffold.
 
 See [work-log.md](work-log.md) for the chronological breakdown.
