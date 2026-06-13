@@ -1,0 +1,208 @@
+/* Pool Brain — comic-styled dashboard.
+   Pairs visually with the user's other HA "comic" apps. Bold borders,
+   warm paper background, drop-shadow blocks, chunky type. */
+
+:root {
+  --ink: #1f1d1a;
+  --paper: #f4ecd8;
+  --cream: #fff5d6;
+  --accent: #ff6f3c;
+  --ok: #4caf50;
+  --warn: #ffb300;
+  --danger: #e53935;
+  --muted: #777;
+  --shadow: 5px 5px 0 var(--ink);
+  --shadow-lg: 7px 7px 0 var(--ink);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: 'Verdana', 'Helvetica Neue', sans-serif;
+  background: var(--paper);
+  color: var(--ink);
+  padding: 18px;
+  max-width: 880px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+header.comic-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 22px;
+}
+header.comic-title h1 {
+  font-weight: 900;
+  font-size: 32px;
+  letter-spacing: -1px;
+  background: var(--cream);
+  padding: 6px 14px;
+  border: 3px solid var(--ink);
+  box-shadow: var(--shadow);
+  margin: 0;
+}
+header.comic-title .ts {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+main { display: grid; gap: 18px; }
+
+.panel {
+  background: #fff;
+  border: 3px solid var(--ink);
+  border-radius: 10px;
+  padding: 18px;
+  box-shadow: var(--shadow);
+}
+
+.panel h2, .panel h3 {
+  margin: 0 0 12px;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  border-bottom: 2px dashed var(--ink);
+  padding-bottom: 6px;
+}
+
+.label {
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 2px;
+}
+
+.value {
+  font-size: 30px;
+  font-weight: 900;
+  line-height: 1.1;
+}
+.value .unit {
+  font-size: 14px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.band {
+  margin-top: 4px;
+  padding: 3px 10px;
+  font-size: 12px;
+  border: 2px solid var(--ink);
+  display: inline-block;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+.band.ok { background: var(--ok); color: white; }
+.band.warning_low, .band.warning_high, .band.warm, .band.saturated { background: var(--warn); color: black; }
+.band.danger_low, .band.danger_high, .band.hot { background: var(--danger); color: white; }
+.band.unknown { background: #eee; color: #555; }
+
+.state {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--muted);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+/* Hero card with health score */
+.hero {
+  display: grid;
+  grid-template-columns: 1fr 1.4fr;
+  gap: 20px;
+  background: var(--cream);
+  box-shadow: var(--shadow-lg);
+}
+.hero-label { font-size: 11px; letter-spacing: 4px; color: var(--muted); }
+.hero-score {
+  font-size: 78px;
+  font-weight: 900;
+  line-height: 1;
+  margin: 4px 0;
+}
+.hero-sub { font-size: 12px; color: var(--muted); }
+
+.hero-right {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  align-items: start;
+  align-content: start;
+}
+.hero-band {
+  background: white;
+  border: 2px solid var(--ink);
+  border-radius: 6px;
+  padding: 8px;
+  font-size: 11px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+.hero-band .v { font-weight: 900; font-size: 14px; display: block; }
+.hero-band.ok { border-left: 8px solid var(--ok); }
+.hero-band.warn { border-left: 8px solid var(--warn); }
+.hero-band.danger { border-left: 8px solid var(--danger); }
+.hero-band.unknown { border-left: 8px solid var(--muted); }
+
+/* Grids */
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+
+/* Progress bar */
+.progress-wrap {
+  background: #eee;
+  border: 2px solid var(--ink);
+  border-radius: 6px;
+  margin-top: 10px;
+  height: 18px;
+  overflow: hidden;
+}
+.progress-bar {
+  height: 100%;
+  background: var(--accent);
+  width: 0%;
+  transition: width 0.6s ease;
+}
+.hint { color: var(--muted); font-size: 12px; margin-top: 4px; }
+
+/* Buttons */
+.comic-btn {
+  background: var(--cream);
+  border: 3px solid var(--ink);
+  border-radius: 6px;
+  padding: 10px 16px;
+  font-weight: 900;
+  font-family: inherit;
+  cursor: pointer;
+  box-shadow: 3px 3px 0 var(--ink);
+  transition: transform 0.04s ease, box-shadow 0.04s ease;
+  margin-top: 10px;
+}
+.comic-btn:hover { background: white; }
+.comic-btn:active {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0 var(--ink);
+}
+.comic-btn.danger { background: var(--danger); color: white; }
+.comic-btn.danger:hover { background: #c62828; }
+.comic-btn.big { width: 100%; font-size: 16px; padding: 14px; }
+
+.actions h2 { margin-top: 0; }
+
+footer {
+  text-align: center;
+  color: var(--muted);
+  font-size: 11px;
+  margin-top: 30px;
+  padding-bottom: 30px;
+}
+footer a { color: var(--ink); }
+
+@media (max-width: 600px) {
+  .hero { grid-template-columns: 1fr; }
+  .grid-2, .grid-3 { grid-template-columns: 1fr; }
+  .hero-score { font-size: 62px; }
+}

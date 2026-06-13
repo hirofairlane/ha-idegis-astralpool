@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Pool Brain</title>
+<link rel="stylesheet" href="static/style.css"/>
+</head>
+<body>
+
+<header class="comic-title">
+  <h1>🏊 POOL BRAIN</h1>
+  <span class="ts" id="ts">cargando…</span>
+</header>
+
+<main>
+
+  <!-- Health card -->
+  <section class="panel hero" id="hero">
+    <div class="hero-left">
+      <div class="hero-label">SALUD</div>
+      <div class="hero-score" id="health-score">--</div>
+      <div class="hero-sub" id="health-sub">midiendo el agua…</div>
+    </div>
+    <div class="hero-right" id="bands"></div>
+  </section>
+
+  <!-- Vital signs -->
+  <section class="grid-3">
+    <div class="panel"><div class="label">pH</div>
+      <div class="value" id="ph">--</div>
+      <div class="band" id="ph-band">--</div>
+    </div>
+    <div class="panel"><div class="label">SAL</div>
+      <div class="value" id="salt">-- <span class="unit">g/L</span></div>
+      <div class="band" id="salt-band">--</div>
+    </div>
+    <div class="panel"><div class="label">TEMP</div>
+      <div class="value" id="temp">-- <span class="unit">°C</span></div>
+      <div class="band" id="temp-band">--</div>
+    </div>
+  </section>
+
+  <!-- Filtration -->
+  <section class="panel">
+    <h2>FILTRACIÓN</h2>
+    <div class="grid-2">
+      <div>
+        <div class="label">Recomendado hoy</div>
+        <div class="value" id="rec-today">-- <span class="unit">min</span></div>
+      </div>
+      <div>
+        <div class="label">Funcionando hoy</div>
+        <div class="value" id="run-today">-- <span class="unit">min</span></div>
+      </div>
+      <div>
+        <div class="label">7 días</div>
+        <div class="value" id="run-week">-- <span class="unit">min</span></div>
+      </div>
+      <div>
+        <div class="label">Energía 7 d</div>
+        <div class="value" id="kwh-week">-- <span class="unit">kWh</span></div>
+      </div>
+    </div>
+    <div class="progress-wrap">
+      <div class="progress-bar" id="progress-today"></div>
+    </div>
+    <div class="hint" id="progress-hint">--</div>
+  </section>
+
+  <!-- Motors -->
+  <section class="grid-2">
+    <div class="panel">
+      <h3>DEPURADORA</h3>
+      <div class="value" id="pump-w">-- <span class="unit">W</span></div>
+      <div class="state" id="pump-state">--</div>
+      <button class="comic-btn danger" id="btn-stop-pump">🛑 PARAR</button>
+    </div>
+    <div class="panel">
+      <h3>LIMPIAFONDOS</h3>
+      <div class="value" id="cleaner-w">-- <span class="unit">W</span></div>
+      <div class="state" id="cleaner-state">--</div>
+      <button class="comic-btn danger" id="btn-stop-cleaner">🛑 PARAR</button>
+    </div>
+  </section>
+
+  <!-- Emergency / actions -->
+  <section class="panel actions">
+    <h2>ACCIONES</h2>
+    <button class="comic-btn danger big" id="btn-stop-all">🛑 PARADA DE EMERGENCIA</button>
+    <button class="comic-btn" id="btn-report-now">📧 Mandar reporte ahora</button>
+    <div class="hint">El reporte semanal se manda automáticamente domingo a las 20 h.</div>
+  </section>
+
+  <footer>
+    <a href="https://www.troublefreepool.com/blog/pool-school/" target="_blank">Pool School (TFP)</a>
+    &nbsp;·&nbsp;
+    <a href="https://github.com/hirofairlane/ha-idegis-astralpool" target="_blank">Código</a>
+  </footer>
+
+</main>
+
+<script src="static/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,39 @@
+#!/usr/bin/with-contenv bashio
+# ==============================================================================
+# pool-brain — s6 service runner
+# Reads the add-on options via bashio, exports them as env vars, and starts
+# the main asyncio app under /opt/pool_brain/main.py.
+# ==============================================================================
+set -e
+
+export POOL_BRAIN_LOG_LEVEL="$(bashio::config 'log_level')"
+export POOL_BRAIN_CAPTURER_BASE_URL="$(bashio::config 'capturer_base_url')"
+export POOL_BRAIN_POOL_VOLUME_M3="$(bashio::config 'pool_volume_m3')"
+export POOL_BRAIN_PUMP_SWITCH_ENTITY="$(bashio::config 'pump_switch_entity')"
+export POOL_BRAIN_PUMP_POWER_ENTITY="$(bashio::config 'pump_power_entity')"
+export POOL_BRAIN_CLEANER_SWITCH_ENTITY="$(bashio::config 'cleaner_switch_entity')"
+export POOL_BRAIN_CLEANER_POWER_ENTITY="$(bashio::config 'cleaner_power_entity')"
+export POOL_BRAIN_NOTIFY_TELEGRAM_SERVICE="$(bashio::config 'notify_telegram_service')"
+export POOL_BRAIN_NOTIFY_EMAIL_SERVICE="$(bashio::config 'notify_email_service')"
+export POOL_BRAIN_WEEKLY_REPORT_ENABLED="$(bashio::config 'weekly_report_enabled')"
+export POOL_BRAIN_WEEKLY_REPORT_DAY="$(bashio::config 'weekly_report_day')"
+export POOL_BRAIN_WEEKLY_REPORT_HOUR="$(bashio::config 'weekly_report_hour')"
+export POOL_BRAIN_AUTO_EMERGENCY_STOP="$(bashio::config 'auto_emergency_stop')"
+export POOL_BRAIN_TARGET_TURNOVERS_PER_DAY="$(bashio::config 'target_turnovers_per_day')"
+export POOL_BRAIN_FIRST_MINUTES_WINDOW_S="$(bashio::config 'first_minutes_window_s')"
+
+# MQTT broker info from the MQTT service the add-on subscribes to
+export POOL_BRAIN_MQTT_HOST="$(bashio::services mqtt 'host')"
+export POOL_BRAIN_MQTT_PORT="$(bashio::services mqtt 'port')"
+export POOL_BRAIN_MQTT_USERNAME="$(bashio::services mqtt 'username')"
+export POOL_BRAIN_MQTT_PASSWORD="$(bashio::services mqtt 'password')"
+
+bashio::log.info "Starting Pool Brain"
+bashio::log.info "  capturer  -> ${POOL_BRAIN_CAPTURER_BASE_URL}"
+bashio::log.info "  volume    -> ${POOL_BRAIN_POOL_VOLUME_M3} m3"
+bashio::log.info "  pump      -> ${POOL_BRAIN_PUMP_SWITCH_ENTITY} / ${POOL_BRAIN_PUMP_POWER_ENTITY}"
+bashio::log.info "  cleaner   -> ${POOL_BRAIN_CLEANER_SWITCH_ENTITY:-disabled}"
+bashio::log.info "  mqtt      -> ${POOL_BRAIN_MQTT_HOST}:${POOL_BRAIN_MQTT_PORT}"
+bashio::log.info "  weekly    -> ${POOL_BRAIN_WEEKLY_REPORT_DAY} @ ${POOL_BRAIN_WEEKLY_REPORT_HOUR}h (enabled=${POOL_BRAIN_WEEKLY_REPORT_ENABLED})"
+
+exec python3 -u /opt/pool_brain/main.py

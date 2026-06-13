@@ -129,3 +129,36 @@ automation:
             {{ states('sensor.idegis_chlorinator_water_temperature') }} °C
             >36 °C durante más de 30 min.
             Riesgo de algas y de degradación de electrodos.
+
+  - id: idegis_alert_rs485_alive
+    alias: "Idegis — RS485 dio señales de vida"
+    description: >
+      Dispara la primera vez (y cada vez que se recupera tras un
+      silencio) que cualquiera de los sensores Modbus RTU del ESP
+      bus-idegis deje de estar unknown/unavailable. Es la señal
+      esperada para reactivar la vía B (Modbus RTU) que ahora mismo
+      está pausada a la espera de respuesta de Idegis sobre el
+      pinout del header MODBUS.
+    mode: single
+    trigger:
+      - platform: state
+        entity_id:
+          - sensor.bus_idegis_ph_modbus
+          - sensor.bus_idegis_capabilities_raw
+    condition:
+      - condition: template
+        value_template: >
+          {{ trigger.from_state.state in ['unknown', 'unavailable', 'none', None]
+             and trigger.to_state.state not in ['unknown', 'unavailable', 'none', None] }}
+    action:
+      - service: "{{ states('input_text.idegis_notify_service') }}"
+        data:
+          message: >
+            🎉 Idegis RS485 vivo —
+            {{ trigger.to_state.attributes.friendly_name }}
+            ahora responde con {{ trigger.to_state.state }}{% if trigger.to_state.attributes.unit_of_measurement %} {{ trigger.to_state.attributes.unit_of_measurement }}{% endif %}.
+            Cross-check cloud:
+            pH {{ states('sensor.idegis_chlorinator_ph') }} ·
+            Sal {{ states('sensor.idegis_chlorinator_salinity') }} g/L ·
+            Temp {{ states('sensor.idegis_chlorinator_water_temperature') }} °C.
+            La vía B (Modbus RTU) puede reactivarse — retoma el proyecto piscina.

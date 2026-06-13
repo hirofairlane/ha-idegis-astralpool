@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8"/>
+<title>Pool Brain — Reporte semanal</title>
+</head>
+<body style="margin:0;font-family:Verdana,sans-serif;background:#f4ecd8;color:#1f1d1a;">
+<div style="max-width:680px;margin:24px auto;padding:0 18px;">
+
+  <h1 style="font-weight:900;font-size:28px;margin:0 0 8px;letter-spacing:-1px;
+             background:#fff5d6;border:3px solid #1f1d1a;display:inline-block;
+             padding:6px 14px;box-shadow:5px 5px 0 #1f1d1a;">
+    🏊 POOL BRAIN — Semana
+  </h1>
+  <p style="color:#555;font-size:13px;margin:4px 0 24px;">
+    Generado {{ now.strftime('%A %d %B %Y, %H:%M') }}
+  </p>
+
+  <!-- Health score -->
+  <div style="background:#ffffff;border:3px solid #1f1d1a;border-radius:8px;
+              padding:18px;margin-bottom:20px;box-shadow:6px 6px 0 #1f1d1a;">
+    <div style="font-size:13px;letter-spacing:2px;color:#666;">SALUD</div>
+    <div style="font-size:58px;font-weight:900;margin:0;line-height:1;">
+      {{ snapshot.get('health_score', '?') }}<span style="font-size:18px;color:#999;">/100</span>
+    </div>
+    <div style="margin-top:8px;font-size:14px;">
+      {% set bands = snapshot.get('bands', {}) %}
+      pH <b>{{ bands.get('ph', '?') }}</b> ·
+      Sal <b>{{ bands.get('salt', '?') }}</b> ·
+      Temp <b>{{ bands.get('temperature', '?') }}</b> ·
+      Producción <b>{{ bands.get('production', '?') }}</b>
+    </div>
+  </div>
+
+  <!-- Vital signs -->
+  <h2 style="font-size:18px;margin-top:24px;border-bottom:2px dashed #1f1d1a;padding-bottom:6px;">
+    Constantes vitales
+  </h2>
+  {% set m = snapshot.get('measurements', {}) %}
+  <table style="width:100%;border-collapse:collapse;margin:8px 0 20px;">
+    <tr>
+      <td style="padding:8px;border:2px solid #1f1d1a;background:#fff5d6;width:25%;">pH</td>
+      <td style="padding:8px;border:2px solid #1f1d1a;font-weight:bold;">{{ m.get('ph') or '—' }}</td>
+    </tr>
+    <tr>
+      <td style="padding:8px;border:2px solid #1f1d1a;background:#fff5d6;">Salinidad</td>
+      <td style="padding:8px;border:2px solid #1f1d1a;font-weight:bold;">{{ m.get('salt_g_l') or '—' }} g/L</td>
+    </tr>
+    <tr>
+      <td style="padding:8px;border:2px solid #1f1d1a;background:#fff5d6;">Temperatura</td>
+      <td style="padding:8px;border:2px solid #1f1d1a;font-weight:bold;">{{ m.get('temperature_c') or '—' }} °C</td>
+    </tr>
+    <tr>
+      <td style="padding:8px;border:2px solid #1f1d1a;background:#fff5d6;">Producción</td>
+      <td style="padding:8px;border:2px solid #1f1d1a;font-weight:bold;">{{ m.get('production_pct') or '—' }} %</td>
+    </tr>
+  </table>
+
+  <!-- Filtration -->
+  <h2 style="font-size:18px;margin-top:24px;border-bottom:2px dashed #1f1d1a;padding-bottom:6px;">
+    Filtración (depuradora)
+  </h2>
+  <table style="width:100%;border-collapse:collapse;margin:8px 0 20px;">
+    <tr>
+      <td style="padding:8px;border:2px solid #1f1d1a;background:#fff5d6;width:50%;">Recomendado hoy</td>
+      <td style="padding:8px;border:2px solid #1f1d1a;font-weight:bold;">{{ snapshot.get('recommended_minutes_today', 0) }} min</td>
+    </tr>
+    <tr>
+      <td style="padding:8px;border:2px solid #1f1d1a;background:#fff5d6;">Funcionamiento hoy</td>
+      <td style="padding:8px;border:2px solid #1f1d1a;font-weight:bold;">{{ runtime_today }} min</td>
+    </tr>
+    <tr>
+      <td style="padding:8px;border:2px solid #1f1d1a;background:#fff5d6;">Funcionamiento 7 d</td>
+      <td style="padding:8px;border:2px solid #1f1d1a;font-weight:bold;">{{ runtime_week }} min</td>
+    </tr>
+    <tr>
+      <td style="padding:8px;border:2px solid #1f1d1a;background:#fff5d6;">Energía 7 d</td>
+      <td style="padding:8px;border:2px solid #1f1d1a;font-weight:bold;">{{ filter_kwh_week }} kWh</td>
+    </tr>
+  </table>
+
+  <!-- Cleaner -->
+  <h2 style="font-size:18px;margin-top:24px;border-bottom:2px dashed #1f1d1a;padding-bottom:6px;">
+    Limpiafondos
+  </h2>
+  <table style="width:100%;border-collapse:collapse;margin:8px 0 20px;">
+    <tr>
+      <td style="padding:8px;border:2px solid #1f1d1a;background:#fff5d6;width:50%;">Energía 7 d</td>
+      <td style="padding:8px;border:2px solid #1f1d1a;font-weight:bold;">{{ cleaner_kwh_week }} kWh</td>
+    </tr>
+  </table>
+
+  <!-- Footer -->
+  <p style="margin-top:32px;font-size:11px;color:#888;text-align:center;">
+    Generado por <b>idegis_pool_brain</b> en tu Home Assistant local.<br/>
+    Datos basados en las guidelines de
+    <a href="https://www.troublefreepool.com/blog/pool-school/" style="color:#444;">Trouble Free Pool</a>.
+  </p>
+</div>
+</body>
+</html>

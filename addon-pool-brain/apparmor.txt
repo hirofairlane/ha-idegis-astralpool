@@ -1,0 +1,26 @@
+#include <tunables/global>
+
+profile pool_brain flags=(attach_disconnected,mediate_deleted) {
+  #include <abstractions/base>
+
+  capability dac_read_search,
+  capability setgid,
+  capability setuid,
+
+  # Allow our process to bind on :8099 (the ingress upstream port).
+  capability net_bind_service,
+
+  # File system
+  file,
+
+  # Process activity
+  signal,
+
+  # Networking
+  network,
+
+  # Allow s6-overlay to do its thing
+  /init ix,
+  /run/s6/** rwlk,
+  /var/run/s6/** rwlk,
+}

@@ -111,16 +111,25 @@ acceptable to the user.
 │   ├── 10-addon-architecture.md   the HA add-on stack (current recommendation)
 │   ├── 11-codec-and-decoded-fields.md   reverse-engineered B0 codec and field semantics
 │   ├── 12-lovelace-cards.md   ready-to-paste Lovelace YAML for the exposed entities
-│   └── 13-alerts-and-jarvis.md  two-layer alerts (HA native + Jarvis qualitative)
+│   ├── 13-alerts-and-jarvis.md  two-layer alerts (HA native + Jarvis qualitative)
+│   └── 14-pool-brain.md       the closed-loop add-on (Pool Brain)
 ├── ha-packages/
-│   └── idegis_alerts.yaml     ready-to-include HA alert pack (Telegram)
-├── addon/                     ← HA Add-on (nginx + capturer, self-contained)
+│   ├── idegis_alerts.yaml     ready-to-include HA alert pack (Telegram)
+│   └── pool_brain.yaml        companion package for the Pool Brain add-on
+├── addon/                     ← HA Add-on #1: cloud capturer (reverse proxy)
 │   ├── config.yaml            add-on manifest
 │   ├── Dockerfile
 │   ├── build.yaml
 │   ├── apparmor.txt
 │   ├── DOCS.md                store description
 │   └── rootfs/                copied verbatim into the image
+├── addon-pool-brain/          ← HA Add-on #2: Pool Brain (closed-loop)
+│   ├── config.yaml            add-on manifest
+│   ├── Dockerfile
+│   ├── build.yaml
+│   ├── apparmor.txt
+│   ├── DOCS.md / README.md / CHANGELOG.md / SPEC.md
+│   └── rootfs/                MQTT publisher + aggregator + ingress UI
 ├── esphome/
 │   └── idegis-neolysis.yaml   ESPHome config (read-only phase 1)
 ├── custom_components/         ← HACS integration (companion of the add-on)
@@ -144,6 +153,10 @@ acceptable to the user.
       unit markers. See [docs/11-codec-and-decoded-fields.md](docs/11-codec-and-decoded-fields.md).
 - ✅ **Live measurements in HA**: pH, water temperature, salinity,
       chlorine production %.
+- ✅ **Pool Brain add-on** — health score, smart filtration schedule,
+      pump anomaly watchdog with optional emergency stop, weekly HTML
+      email report, comic-styled ingress dashboard. See
+      [docs/14-pool-brain.md](docs/14-pool-brain.md).
 - 🚧 Hash `H` formula still needed for **forging** requests
       (bidirectional control via the cloud channel).
 - 🚧 ESPHome config skeleton, not yet flashed onto hardware (Modbus
