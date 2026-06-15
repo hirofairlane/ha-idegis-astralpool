@@ -62,6 +62,7 @@ class Counters:
             "runtime_minutes": {},  # day -> int
             "filter_kwh": {},  # day -> float
             "cleaner_kwh": {},  # day -> float
+            "health_score": {},  # day -> int (last value of the day)
             "pump_nominal_w": 1100.0,  # learned baseline
             "cleaner_nominal_w": 600.0,
             "last_pump_w_sample_ts": 0.0,
@@ -115,6 +116,15 @@ class Counters:
 
     def reset_today_runtime(self) -> None:
         self.data.setdefault("runtime_minutes", {}).pop(_today_key(), None)
+
+    def record_health_score(self, score: int) -> None:
+        d = self.data.setdefault("health_score", {})
+        d[_today_key()] = int(score)
+        # Same 60-day pruning rule as the other accumulators.
+        keep = (_now_local().date() - timedelta(days=60)).isoformat()
+        for k in list(d):
+            if k < keep:
+                d.pop(k, None)
 
     def runtime_today(self) -> int:
         return int(self.data.get("runtime_minutes", {}).get(_today_key(), 0))
@@ -261,6 +271,11 @@ class Aggregator:
             "first_minutes_window",
             "ON" if first_minutes else "OFF",
         )
+
+        # 8a. Persist today's health score (overwrites within the day;
+        #     the very last value of the day is what the weekly report
+        #     ends up showing).
+        COUNTERS.record_health_score(score)
 
         # 8. Push to history for sparklines.
         self.history.record(

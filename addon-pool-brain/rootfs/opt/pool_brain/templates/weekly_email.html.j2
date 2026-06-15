@@ -56,10 +56,31 @@
     </tr>
   </table>
 
+  {% if chart_health_png %}
+  <div style="margin:24px 0;text-align:center;">
+    <img src="data:image/png;base64,{{ chart_health_png }}" alt="Salud 7d"
+         style="max-width:100%;border:3px solid #1f1d1a;border-radius:8px;box-shadow:5px 5px 0 #1f1d1a;">
+  </div>
+  {% endif %}
+
+  {% if chart_vitals_png %}
+  <div style="margin:24px 0;text-align:center;">
+    <img src="data:image/png;base64,{{ chart_vitals_png }}" alt="Vitals 24h"
+         style="max-width:100%;border:3px solid #1f1d1a;border-radius:8px;box-shadow:5px 5px 0 #1f1d1a;">
+  </div>
+  {% endif %}
+
   <!-- Filtration -->
   <h2 style="font-size:18px;margin-top:24px;border-bottom:2px dashed #1f1d1a;padding-bottom:6px;">
     Filtración (depuradora)
   </h2>
+
+  {% if chart_runtime_png %}
+  <div style="margin:16px 0;text-align:center;">
+    <img src="data:image/png;base64,{{ chart_runtime_png }}" alt="Runtime 7d"
+         style="max-width:100%;border:3px solid #1f1d1a;border-radius:8px;box-shadow:5px 5px 0 #1f1d1a;">
+  </div>
+  {% endif %}
   <table style="width:100%;border-collapse:collapse;margin:8px 0 20px;">
     <tr>
       <td style="padding:8px;border:2px solid #1f1d1a;background:#fff5d6;width:50%;">Recomendado hoy</td>

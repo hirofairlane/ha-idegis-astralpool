@@ -5,7 +5,7 @@ ENV LANG=C.UTF-8 \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 
-RUN apk add --no-cache python3 py3-pip \
+RUN apk add --no-cache python3 py3-pip py3-numpy py3-matplotlib \
     && pip3 install --no-cache-dir --break-system-packages \
         "aiohttp==3.11.11" \
         "aiomqtt==2.3.0" \
@@ -24,4 +24,4 @@ LABEL \
     io.hass.name="Idegis Pool Brain" \
     io.hass.description="Closed-loop brain for the Idegis pool stack" \
     io.hass.type="addon" \
-    io.hass.version="0.3.0"
+    io.hass.version="0.3.1"

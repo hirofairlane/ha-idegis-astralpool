@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.3.1 — 2026-06-15
+
+- **PNG charts in the weekly email**. The HTML report now embeds three
+  matplotlib-generated charts inline (base64) so they survive strict
+  mail clients:
+  - Daily health score over the last 7 days (with TFP traffic-light
+    bands shaded in the background).
+  - Pump runtime per day, last 7 days (bar chart).
+  - 24 h vitals stacked sparklines (pH / salt / temperature).
+- `charts.py` keeps every figure side-effect free and base64-encodes
+  the PNG so the caller doesn't touch the filesystem.
+- Aggregator now persists the daily health score (overwrites within
+  the day, last reading wins) so the weekly chart has a long-term
+  series to plot.
+- `_safe_chart` wrapper in `reporter.py` makes a chart failure
+  cosmetic — the rest of the email still ships.
+- Runtime image gains `py3-numpy` + `py3-matplotlib` via apk for
+  smaller layer size than pip-installing.
+
 ## 0.3.0 — 2026-06-15
 
 - **24 h sparklines** on the comic dashboard. Each vital signs panel
