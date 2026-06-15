@@ -1,18 +1,21 @@
 """Pump/cleaner anomaly watchdog.
 
-Three families of anomaly per channel:
+Owns the orchestration loop (HA reads + MQTT publish + Telegram + auto
+stop). The decision logic itself lives in `anomaly.py`; the nominal-W
+self-calibration lives in `nominal_learner.py`. Both are pure modules
+covered by unit tests.
 
-- **Overcurrent**: power > nominal * (1 + margin) for >30 s. Indicates the
-  motor is fighting against something (closed valve, blocked impeller).
-- **Dry running**: switch.state == on AND power < nominal * 0.2 for >60 s.
-  Indicates the motor is spinning without water — burns the seal.
-- **Stuck contactor**: switch.state == off AND power > 5 W for >60 s.
-  Indicates the relay is welded closed; the user has to flip the breaker.
+For each watched Shelly channel, every 10 s we:
 
-When an anomaly is detected the watchdog (a) raises
-`binary_sensor.idegis_brain_<channel>_anomaly`, (b) fires a Telegram
-notification, and (c) — if `auto_emergency_stop` is enabled — calls
-`switch.turn_off` on the affected entity.
+1. Sample the HA switch state and the live wattage.
+2. Update the nominal-W EMA (only when the switch is on and power is
+   above the noise floor).
+3. Persist the new nominal so it survives restarts.
+4. Ask `anomaly.decide` whether an anomaly is firing.
+5. If just_fired, send a Telegram alert and optionally call
+   `switch.turn_off` (dry running only, and only when
+   `auto_emergency_stop` is true).
+6. Publish the binary_sensor + the learned nominal to MQTT.
 """
 from __future__ import annotations
 
@@ -21,65 +24,84 @@ import logging
 import time
 from dataclasses import dataclass
 
+import anomaly
+import nominal_learner
+from aggregator import COUNTERS
 from config import SETTINGS
 from ha_client import HA
 from mqtt_pub import MQTT
 
 log = logging.getLogger("pool_brain.pump_watch")
 
-NOMINAL_PUMP_W = 1100.0  # baseline; learned in v2
-NOMINAL_CLEANER_W = 600.0
-OVERCURRENT_MARGIN_PCT = 20  # default; option later
-DRY_RUNNING_THRESHOLD_PCT = 20
-STUCK_W_THRESHOLD = 5
-
 
 @dataclass
 class Channel:
     label: str
+    mqtt_key: str  # "pump" or "cleaner" — used to derive entity names
     switch_entity: str
     power_entity: str
-    nominal_w: float
 
 
 @dataclass
-class _State:
-    overcurrent_since: float = 0.0
-    dry_since: float = 0.0
-    stuck_since: float = 0.0
-    anomaly_on: bool = False
-    last_notified_kind: str = ""
+class _PerChannelState:
+    latched: anomaly.Latched
+    learner: nominal_learner.LearnerState
 
 
-def _build_channels() -> list[tuple[Channel, _State]]:
-    channels: list[tuple[Channel, _State]] = []
-    channels.append(
+def _build_channels() -> list[tuple[Channel, _PerChannelState]]:
+    out: list[tuple[Channel, _PerChannelState]] = []
+    out.append(
         (
             Channel(
                 "Depuradora",
+                "pump",
                 SETTINGS.pump_switch_entity,
                 SETTINGS.pump_power_entity,
-                NOMINAL_PUMP_W,
             ),
-            _State(),
+            _PerChannelState(
+                latched=anomaly.Latched(),
+                learner=nominal_learner.LearnerState(
+                    nominal_w=COUNTERS.data.get("pump_nominal_w", 1100.0)
+                ),
+            ),
         )
     )
     if SETTINGS.cleaner_switch_entity and SETTINGS.cleaner_power_entity:
-        channels.append(
+        out.append(
             (
                 Channel(
                     "Limpiafondos",
+                    "cleaner",
                     SETTINGS.cleaner_switch_entity,
                     SETTINGS.cleaner_power_entity,
-                    NOMINAL_CLEANER_W,
                 ),
-                _State(),
+                _PerChannelState(
+                    latched=anomaly.Latched(),
+                    learner=nominal_learner.LearnerState(
+                        nominal_w=COUNTERS.data.get("cleaner_nominal_w", 600.0)
+                    ),
+                ),
             )
         )
-    return channels
+    return out
 
 
 CHANNELS = _build_channels()
+
+_MESSAGES = {
+    "overcurrent": (
+        "⚠️ {label} consume {p:.0f} W (>{th:.0f} W = nominal {n:.0f} W + {m:.0f}%). "
+        "Posible bloqueo del rodete o válvula cerrada."
+    ),
+    "dry": (
+        "🚨 {label} encendida marcando solo {p:.0f} W (<{th:.0f} W = {dt:.0f}% de "
+        "nominal {n:.0f} W). Probable marcha en seco. Apagar para no quemar el sello."
+    ),
+    "stuck": (
+        "⚠️ {label} en OFF pero consume {p:.0f} W. "
+        "Contactor pegado: revisar el cuadro eléctrico."
+    ),
+}
 
 
 async def _notify(text: str) -> None:
@@ -87,85 +109,79 @@ async def _notify(text: str) -> None:
         await HA.notify(SETTINGS.notify_telegram_service, text)
 
 
-async def _maybe_stop(channel: Channel, kind: str) -> None:
+async def _maybe_stop(channel: Channel, kind: anomaly.Kind) -> None:
     if SETTINGS.auto_emergency_stop and kind == "dry":
         log.warning("auto-emergency-stop on %s (%s)", channel.label, kind)
         await HA.turn_off(channel.switch_entity)
 
 
-async def _tick_channel(channel: Channel, state: _State) -> None:
+def _format_message(kind: anomaly.Kind, channel: Channel, sample: anomaly.Sample) -> str:
+    if kind == "overcurrent":
+        th = sample.nominal_w * (1 + sample.overcurrent_margin_pct / 100)
+        return _MESSAGES["overcurrent"].format(
+            label=channel.label,
+            p=sample.power_w,
+            th=th,
+            n=sample.nominal_w,
+            m=sample.overcurrent_margin_pct,
+        )
+    if kind == "dry":
+        th = sample.nominal_w * (sample.dry_threshold_pct / 100)
+        return _MESSAGES["dry"].format(
+            label=channel.label,
+            p=sample.power_w,
+            th=th,
+            dt=sample.dry_threshold_pct,
+            n=sample.nominal_w,
+        )
+    if kind == "stuck":
+        return _MESSAGES["stuck"].format(label=channel.label, p=sample.power_w)
+    return ""
+
+
+async def _tick_channel(channel: Channel, state: _PerChannelState) -> None:
     now = time.time()
     sw = await HA.get_state_value(channel.switch_entity)
     p = await HA.get_state_float(channel.power_entity, 0.0) or 0.0
 
-    overcurrent = p > channel.nominal_w * (1 + OVERCURRENT_MARGIN_PCT / 100)
-    dry = sw == "on" and p < channel.nominal_w * (DRY_RUNNING_THRESHOLD_PCT / 100)
-    stuck = sw == "off" and p > STUCK_W_THRESHOLD
-
-    state.overcurrent_since = (
-        now if (overcurrent and state.overcurrent_since == 0) else
-        0 if not overcurrent else state.overcurrent_since
+    # 1. Update the nominal EMA.
+    state.learner = nominal_learner.update(
+        state.learner,
+        nominal_learner.LearnerSample(switch_state=sw, power_w=p),
     )
-    state.dry_since = (
-        now if (dry and state.dry_since == 0) else
-        0 if not dry else state.dry_since
-    )
-    state.stuck_since = (
-        now if (stuck and state.stuck_since == 0) else
-        0 if not stuck else state.stuck_since
-    )
-
-    over_lasting = state.overcurrent_since and (now - state.overcurrent_since) > 30
-    dry_lasting = state.dry_since and (now - state.dry_since) > 60
-    stuck_lasting = state.stuck_since and (now - state.stuck_since) > 60
-
-    fired = ""
-    if over_lasting:
-        fired = "overcurrent"
-    elif dry_lasting:
-        fired = "dry"
-    elif stuck_lasting:
-        fired = "stuck"
-
-    if fired:
-        if not state.anomaly_on or state.last_notified_kind != fired:
-            messages = {
-                "overcurrent": (
-                    f"⚠️ {channel.label} consume {p:.0f} W "
-                    f"(>{channel.nominal_w:.0f} W nominal +{OVERCURRENT_MARGIN_PCT}%). "
-                    "Posible bloqueo del rodete o válvula cerrada."
-                ),
-                "dry": (
-                    f"🚨 {channel.label} encendida marcando solo {p:.0f} W "
-                    f"(<{channel.nominal_w * DRY_RUNNING_THRESHOLD_PCT / 100:.0f} W). "
-                    "Probable marcha en seco. Apagar para no quemar el sello."
-                ),
-                "stuck": (
-                    f"⚠️ {channel.label} en OFF pero consume {p:.0f} W. "
-                    "Contactor pegado: revisar el cuadro eléctrico."
-                ),
-            }
-            await _notify(messages[fired])
-            await _maybe_stop(channel, fired)
-            state.last_notified_kind = fired
-        state.anomaly_on = True
+    if channel.mqtt_key == "pump":
+        COUNTERS.data["pump_nominal_w"] = state.learner.nominal_w
     else:
-        if state.anomaly_on:
-            state.last_notified_kind = ""
-        state.anomaly_on = False
+        COUNTERS.data["cleaner_nominal_w"] = state.learner.nominal_w
+    COUNTERS.save()
 
-    if channel.label == "Depuradora":
-        await MQTT.publish(
-            "binary_sensor",
-            "pump_anomaly",
-            "ON" if state.anomaly_on else "OFF",
-        )
-    else:
-        await MQTT.publish(
-            "binary_sensor",
-            "cleaner_anomaly",
-            "ON" if state.anomaly_on else "OFF",
-        )
+    # 2. Decide.
+    sample = anomaly.Sample(
+        switch_state=sw,
+        power_w=p,
+        nominal_w=state.learner.nominal_w,
+    )
+    decision = anomaly.decide(sample, state.latched, now)
+    state.latched = decision.latched
+
+    # 3. React on transitions.
+    if decision.just_fired:
+        msg = _format_message(decision.active_kind, channel, sample)
+        if msg:
+            await _notify(msg)
+        await _maybe_stop(channel, decision.active_kind)
+
+    # 4. Publish entities.
+    await MQTT.publish(
+        "binary_sensor",
+        f"{channel.mqtt_key}_anomaly",
+        "ON" if decision.active_kind else "OFF",
+    )
+    await MQTT.publish(
+        "sensor",
+        f"{channel.mqtt_key}_nominal_w_learned",
+        round(state.learner.nominal_w, 0),
+    )
 
 
 async def run_forever(interval_s: int = 10) -> None:
@@ -179,7 +195,7 @@ async def run_forever(interval_s: int = 10) -> None:
         await asyncio.sleep(interval_s)
 
 
-# ----- Emergency stop entry points (called from MQTT button handlers) ------
+# ----- Emergency stop entry points -----------------------------------------
 
 
 async def emergency_stop_pump() -> None:

@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.2.0 — 2026-06-15
+
+- **Auto-learned pump nominal W**. New `nominal_learner.py` module
+  applies an exponential moving average (alpha 0.02, ~8 min half-life)
+  over the live wattage while the pump switch is on and the reading is
+  above the noise floor (50 W). The learned value persists in
+  `/data/state.json` and survives restarts.
+- **Pump anomaly logic extracted** into a side-effect-free
+  `anomaly.decide(sample, latched, now)` function. The previous
+  `pump_watch.py` became a thin orchestrator: it samples HA, calls
+  `nominal_learner.update`, calls `anomaly.decide`, reacts (Telegram +
+  optional auto-stop), and publishes MQTT. The whole decision is now
+  unit-testable without HA or MQTT.
+- **Bug fix**: latched timers used 0.0 as the "not active" sentinel,
+  which collided with a legitimate `now=0` on the first tick. Replaced
+  with `None`.
+- **New MQTT diagnostic entities**:
+  `sensor.idegis_brain_pump_nominal_w_learned` and
+  `sensor.idegis_brain_cleaner_nominal_w_learned` so the user can watch
+  the EMA converge.
+- **Test coverage** jumped from 66 to 90 cases: every transition of
+  the anomaly state machine is now covered, plus the full lifecycle of
+  the learner (rejection of off-state samples, EMA convergence, hard
+  floor enforcement, alpha override).
+
 ## 0.1.0 — 2026-06-13
 
 First public release.

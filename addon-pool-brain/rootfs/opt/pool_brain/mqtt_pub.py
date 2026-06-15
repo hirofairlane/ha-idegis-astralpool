@@ -34,7 +34,7 @@ def _device_block() -> dict[str, Any]:
         "name": DEVICE_NAME,
         "manufacturer": "Sergio (hirofairlane)",
         "model": "Pool Brain v0.1",
-        "sw_version": "0.1.0",
+        "sw_version": "0.2.0",
     }
 
 
@@ -204,6 +204,32 @@ ENTITIES: list[EntityDef] = [
             "device_class": "power",
             "state_class": "measurement",
             "icon": "mdi:engine",
+        },
+    ),
+    EntityDef(
+        "sensor",
+        "pump_nominal_w_learned",
+        "Pump nominal W (learned)",
+        state_topic=_state_topic_for("sensor", "pump_nominal_w_learned"),
+        extra_config={
+            "unit_of_measurement": "W",
+            "device_class": "power",
+            "state_class": "measurement",
+            "icon": "mdi:gauge",
+            "entity_category": "diagnostic",
+        },
+    ),
+    EntityDef(
+        "sensor",
+        "cleaner_nominal_w_learned",
+        "Cleaner nominal W (learned)",
+        state_topic=_state_topic_for("sensor", "cleaner_nominal_w_learned"),
+        extra_config={
+            "unit_of_measurement": "W",
+            "device_class": "power",
+            "state_class": "measurement",
+            "icon": "mdi:gauge",
+            "entity_category": "diagnostic",
         },
     ),
     EntityDef(

@@ -24,4 +24,4 @@ LABEL \
     io.hass.name="Idegis Pool Brain" \
     io.hass.description="Closed-loop brain for the Idegis pool stack" \
     io.hass.type="addon" \
-    io.hass.version="0.1.0"
+    io.hass.version="0.2.0"
