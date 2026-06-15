@@ -97,6 +97,21 @@ See [`SPEC.md`](SPEC.md) for the full design notes.
 | `button` | `idegis_brain_emergency_stop_cleaner` | Press to stop cleaner. |
 | `button` | `idegis_brain_run_weekly_report_now` | Fire report on demand. |
 
+## Running the tests
+
+The add-on ships with a pytest suite covering the pure logic (TFP bands,
+weighted score, recommended-minutes engine). Tests don't need MQTT or
+Home Assistant — they import the modules directly from `rootfs/`.
+
+```bash
+cd addon-pool-brain
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements-dev.txt
+pytest
+```
+
+Current state: **66 tests passing**.
+
 ## License
 
 MIT for code, CC-BY-SA 4.0 for docs.

@@ -1,0 +1,4 @@
+# Dev-only requirements (tests).
+# The add-on itself pins its runtime deps in the Dockerfile.
+pytest>=8.0
+pytest-asyncio>=0.23
