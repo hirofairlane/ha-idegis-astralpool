@@ -37,7 +37,7 @@ options:
   cleaner_power_entity: "sensor.shellypro4pm_30c6f7836a6c_power_1"
   notify_telegram_service: "notify.telegram_bot_1353549989_1458801761"
   notify_email_service: "notify.Gmail_hiro"
-  email_target: "REDACTED"
+  email_target: ""
   weekly_report_enabled: true
   weekly_report_day: "sun"
   weekly_report_hour: 20
