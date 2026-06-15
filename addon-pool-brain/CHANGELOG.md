@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.4.2 — 2026-06-16
+
+- **PII out of the repo by design**. The email recipient now lives in
+  an `input_text.pool_brain_email_target` helper that the companion
+  package declares. The add-on reads its state at send time and
+  forwards it as `data.target` to the notify service. The previous
+  `email_target` string option is gone; in its place there's
+  `email_target_entity` (default
+  `input_text.pool_brain_email_target`) so a user can point to a
+  different helper if they prefer.
+- Pattern applies for any future PII-ish setting we add: declare it
+  as an `input_text` in the package, the add-on reads it via the
+  Supervisor-proxied HA API. Values live only in the user's own
+  configuration.
+
 ## 0.4.1 — 2026-06-15
 
 - **Email defaults pre-filled** for the reference install: the

@@ -84,21 +84,30 @@ async def send_weekly_report() -> None:
         return
     html = _render_html()
 
-    target = SETTINGS.notify_email_service
-    if target:
+    target_service = SETTINGS.notify_email_service
+    if target_service:
         data: dict = {"html": html}
-        if SETTINGS.email_target:
-            data["target"] = [SETTINGS.email_target]
+        if SETTINGS.email_target_entity:
+            recipient = await HA.get_state_value(SETTINGS.email_target_entity)
+            if recipient and recipient not in ("unknown", "unavailable", ""):
+                data["target"] = [recipient]
+            else:
+                log.info(
+                    "no recipient in %s; sending without target",
+                    SETTINGS.email_target_entity,
+                )
         ok = await HA.notify(
-            target,
+            target_service,
             "Reporte semanal de la piscina (HTML adjunto)",
             title="Pool Brain — Reporte semanal",
             data=data,
         )
         if ok:
-            log.info("weekly report sent via %s", target)
+            log.info("weekly report sent via %s", target_service)
             return
-        log.warning("email send via %s failed; falling back to Telegram", target)
+        log.warning(
+            "email send via %s failed; falling back to Telegram", target_service
+        )
 
     if SETTINGS.notify_telegram_service:
         await HA.notify(SETTINGS.notify_telegram_service, _telegram_summary())

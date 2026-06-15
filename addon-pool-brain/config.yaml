@@ -5,7 +5,7 @@ description: >-
   telemetry into a TFP-aware health score, smart filtration scheduler,
   pump anomaly watchdog with emergency stop, weekly HTML email report and
   a comic-styled ingress dashboard.
-version: "0.4.1"
+version: "0.4.2"
 slug: "idegis_pool_brain"
 init: false
 arch:
@@ -37,7 +37,7 @@ options:
   cleaner_power_entity: "sensor.shellypro4pm_30c6f7836a6c_power_1"
   notify_telegram_service: "notify.telegram_bot_1353549989_1458801761"
   notify_email_service: "notify.Gmail_hiro"
-  email_target: ""
+  email_target_entity: "input_text.pool_brain_email_target"
   weekly_report_enabled: true
   weekly_report_day: "sun"
   weekly_report_hour: 20
@@ -55,7 +55,7 @@ schema:
   cleaner_power_entity: str?
   notify_telegram_service: str?
   notify_email_service: str?
-  email_target: str?
+  email_target_entity: str?
   weekly_report_enabled: bool
   weekly_report_day: list(mon|tue|wed|thu|fri|sat|sun)
   weekly_report_hour: int(0,23)

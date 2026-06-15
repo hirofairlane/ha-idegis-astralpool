@@ -54,7 +54,9 @@ class Settings:
     # Notify channels
     notify_telegram_service: str
     notify_email_service: str
-    email_target: str
+    # HA entity that holds the email recipient — looked up at send time so
+    # PII never ends up in the addon options / repo.
+    email_target_entity: str
 
     # Weekly report
     weekly_report_enabled: bool
@@ -94,7 +96,9 @@ def load_settings() -> Settings:
         cleaner_power_entity=_env("CLEANER_POWER_ENTITY", ""),
         notify_telegram_service=_env("NOTIFY_TELEGRAM_SERVICE", ""),
         notify_email_service=_env("NOTIFY_EMAIL_SERVICE", ""),
-        email_target=_env("EMAIL_TARGET", ""),
+        email_target_entity=_env(
+            "EMAIL_TARGET_ENTITY", "input_text.pool_brain_email_target"
+        ),
         weekly_report_enabled=_env_bool("WEEKLY_REPORT_ENABLED", True),
         weekly_report_day=_env("WEEKLY_REPORT_DAY", "sun"),
         weekly_report_hour=_env_int("WEEKLY_REPORT_HOUR", 20),

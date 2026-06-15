@@ -23,6 +23,16 @@ input_text:
     max: 255
     icon: mdi:bell-alert
 
+  # PII held locally only — the add-on reads this entity at send time
+  # and never serialises the value back to disk. Set it from the HA UI
+  # (Settings → Devices & services → Helpers) so it stays out of the
+  # public repo.
+  pool_brain_email_target:
+    name: "Pool Brain — destinatario reporte semanal"
+    initial: ""
+    max: 120
+    icon: mdi:email-outline
+
 input_number:
   pool_brain_runtime_target_today:
     name: "Pool Brain — objetivo runtime hoy (min)"
