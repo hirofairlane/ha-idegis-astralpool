@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.1 — 2026-06-15
+
+- **Email defaults pre-filled** for the reference install: the
+  weekly report uses `notify.Gmail_hiro` and targets
+  `scamposgarci@gmail.com` out of the box. Both are exposed as
+  add-on options so other users can override them.
+- New option `email_target` (forwarded to the notify service as
+  `data: {target: [...]}`) so the addon supports SMTP backends that
+  insist on an explicit recipient.
+
 ## 0.4.0 — 2026-06-15
 
 - **Auto-bootstrap of the HA package**. The add-on now ships its

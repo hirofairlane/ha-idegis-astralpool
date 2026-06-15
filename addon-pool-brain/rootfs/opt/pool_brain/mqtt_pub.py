@@ -34,7 +34,7 @@ def _device_block() -> dict[str, Any]:
         "name": DEVICE_NAME,
         "manufacturer": "Sergio (hirofairlane)",
         "model": "Pool Brain v0.1",
-        "sw_version": "0.4.0",
+        "sw_version": "0.4.1",
     }
 
 

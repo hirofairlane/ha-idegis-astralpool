@@ -86,11 +86,14 @@ async def send_weekly_report() -> None:
 
     target = SETTINGS.notify_email_service
     if target:
+        data: dict = {"html": html}
+        if SETTINGS.email_target:
+            data["target"] = [SETTINGS.email_target]
         ok = await HA.notify(
             target,
             "Reporte semanal de la piscina (HTML adjunto)",
             title="Pool Brain — Reporte semanal",
-            data={"html": html},
+            data=data,
         )
         if ok:
             log.info("weekly report sent via %s", target)

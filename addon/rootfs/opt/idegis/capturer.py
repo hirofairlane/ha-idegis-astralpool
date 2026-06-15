@@ -680,8 +680,99 @@ def build_proxy_app() -> web.Application:
     return app
 
 
+async def ingress_index(request: web.Request) -> web.Response:  # noqa: ARG001
+    """Minimal status page served at the ingress root.
+
+    Renders the current capturer state with comic styling so the user
+    has something useful to look at when they click the "Show in
+    sidebar" panel HA exposes for ingress add-ons.
+    """
+    now = datetime.now(timezone.utc)
+    online = bool(
+        state.last_seen
+        and (now - state.last_seen).total_seconds() < ONLINE_TIMEOUT_S
+    )
+    seconds_since = (
+        (now - state.last_seen).total_seconds() if state.last_seen else None
+    )
+    measurements = summarise_measurements(decode_fields(state.sticky_fields)) or {}
+    captured = len(state.history)
+    last_session_snapshot = State._snapshot_session(
+        state.last_session_closed or State._empty_session()
+    )
+
+    def _row(label: str, value: object) -> str:
+        v = "—" if value in (None, "") else value
+        return (
+            f'<tr><td style="padding:6px 10px;border:2px solid #1f1d1a;'
+            f'background:#fff5d6;width:45%;">{label}</td>'
+            f'<td style="padding:6px 10px;border:2px solid #1f1d1a;font-weight:bold;">{v}</td></tr>'
+        )
+
+    def _live(name: str) -> str:
+        m = measurements.get(name)
+        if isinstance(m, dict):
+            v = m.get("value")
+            unit = m.get("unit", "")
+            return f"{v} {unit}".strip() if v is not None else "—"
+        return "—"
+
+    last_session_aggs = last_session_snapshot.get("aggregates") or {}
+
+    def _agg(metric: str, key: str = "avg") -> str:
+        a = last_session_aggs.get(metric)
+        if isinstance(a, dict) and a.get(key) is not None:
+            return str(a[key])
+        return "—"
+
+    rows = [
+        _row("Online", "✅ sí" if online else "❌ no"),
+        _row("Requests capturadas", captured),
+        _row("Read.php calls", state.read_count),
+        _row("Write.php calls", state.write_count),
+        _row(
+            "Seconds since last request",
+            round(seconds_since, 1) if isinstance(seconds_since, (int, float)) else "—",
+        ),
+        _row("pH (live)", _live("ph")),
+        _row("Salinity (live)", _live("salinity")),
+        _row("Water temperature (live)", _live("water_temperature")),
+        _row("Last session pH avg", _agg("SG")),
+        _row("Last session salt avg", _agg("IT")),
+        _row("Last session duration (s)", last_session_snapshot.get("duration_seconds")),
+    ]
+
+    html = f"""<!doctype html>
+<html lang="es"><head>
+<meta charset="utf-8"><title>Idegis cloud capturer</title>
+<style>
+  body {{margin:0;font-family:Verdana,sans-serif;background:#f4ecd8;color:#1f1d1a;padding:20px;}}
+  .wrap {{max-width:720px;margin:0 auto;}}
+  h1 {{font-weight:900;background:#fff5d6;border:3px solid #1f1d1a;padding:8px 16px;display:inline-block;box-shadow:5px 5px 0 #1f1d1a;letter-spacing:-1px;}}
+  table {{width:100%;border-collapse:collapse;margin-top:16px;background:#fff;box-shadow:5px 5px 0 #1f1d1a;border:3px solid #1f1d1a;}}
+  a {{color:#1f1d1a;}}
+  .links {{margin-top:24px;font-size:13px;color:#555;}}
+  .links a {{display:inline-block;background:#fff5d6;border:2px solid #1f1d1a;padding:4px 10px;text-decoration:none;margin-right:8px;border-radius:4px;box-shadow:2px 2px 0 #1f1d1a;}}
+</style></head>
+<body><div class="wrap">
+  <h1>🌊 IDEGIS CAPTURER</h1>
+  <p>Estado en vivo del capturer. Auto-refresh cada 30 s.</p>
+  <table>{''.join(rows)}</table>
+  <div class="links">
+    <a href="api/idegis/state">📄 /api/idegis/state</a>
+    <a href="api/idegis/history">🕒 /api/idegis/history</a>
+    <a href="api/idegis/analyze">🔬 /api/idegis/analyze</a>
+    <a href="api/idegis/last_response">📥 /api/idegis/last_response</a>
+  </div>
+</div>
+<script>setTimeout(() => location.reload(), 30000);</script>
+</body></html>"""
+    return web.Response(text=html, content_type="text/html")
+
+
 def build_api_app() -> web.Application:
     app = web.Application()
+    app.router.add_get("/", ingress_index)
     app.router.add_get("/api/idegis/health", api_health)
     app.router.add_get("/api/idegis/state", api_state)
     app.router.add_get("/api/idegis/history", api_history)
