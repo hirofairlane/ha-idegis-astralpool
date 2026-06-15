@@ -1,5 +1,7 @@
 # Idegis Pool Brain — Home Assistant add-on
 
+[![pool-brain tests](https://github.com/hirofairlane/ha-idegis-astralpool/actions/workflows/pool-brain-tests.yml/badge.svg)](https://github.com/hirofairlane/ha-idegis-astralpool/actions/workflows/pool-brain-tests.yml)
+
 Closed-loop pool brain that sits on top of the
 [`idegis_capturer`](../addon/) cloud capturer. It turns the raw Idegis
 telemetry into TFP-aware bands, a health score, a recommended

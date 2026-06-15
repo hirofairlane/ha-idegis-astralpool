@@ -3,6 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Docs: CC BY-SA 4.0](https://img.shields.io/badge/docs-CC%20BY--SA%204.0-lightgrey.svg)](LICENSE-docs)
 [![Project status: pre-alpha](https://img.shields.io/badge/status-pre--alpha-orange.svg)](work-log.md)
+[![pool-brain tests](https://github.com/hirofairlane/ha-idegis-astralpool/actions/workflows/pool-brain-tests.yml/badge.svg)](https://github.com/hirofairlane/ha-idegis-astralpool/actions/workflows/pool-brain-tests.yml)
 
 Reverse engineering, documentation and Home Assistant integration for
 **Idegis** and **AstralPool** salt water chlorinators (group Fluidra,
