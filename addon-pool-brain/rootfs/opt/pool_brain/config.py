@@ -64,6 +64,9 @@ class Settings:
     auto_emergency_stop: bool
     first_minutes_window_s: int
 
+    # Bootstrap
+    auto_bootstrap_package: bool
+
     # MQTT
     mqtt_host: str
     mqtt_port: int
@@ -95,6 +98,7 @@ def load_settings() -> Settings:
         weekly_report_hour=_env_int("WEEKLY_REPORT_HOUR", 20),
         auto_emergency_stop=_env_bool("AUTO_EMERGENCY_STOP", False),
         first_minutes_window_s=_env_int("FIRST_MINUTES_WINDOW_S", 300),
+        auto_bootstrap_package=_env_bool("AUTO_BOOTSTRAP_PACKAGE", True),
         mqtt_host=_env("MQTT_HOST", ""),
         mqtt_port=_env_int("MQTT_PORT", 1883),
         mqtt_username=_env("MQTT_USERNAME", ""),

@@ -21,6 +21,7 @@ export POOL_BRAIN_WEEKLY_REPORT_HOUR="$(bashio::config 'weekly_report_hour')"
 export POOL_BRAIN_AUTO_EMERGENCY_STOP="$(bashio::config 'auto_emergency_stop')"
 export POOL_BRAIN_TARGET_TURNOVERS_PER_DAY="$(bashio::config 'target_turnovers_per_day')"
 export POOL_BRAIN_FIRST_MINUTES_WINDOW_S="$(bashio::config 'first_minutes_window_s')"
+export POOL_BRAIN_AUTO_BOOTSTRAP_PACKAGE="$(bashio::config 'auto_bootstrap_package')"
 
 # MQTT broker info from the MQTT service the add-on subscribes to
 export POOL_BRAIN_MQTT_HOST="$(bashio::services mqtt 'host')"

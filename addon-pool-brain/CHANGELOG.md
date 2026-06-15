@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.4.0 — 2026-06-15
+
+- **Auto-bootstrap of the HA package**. The add-on now ships its
+  companion package (`idegis_pool_brain.yaml` — helpers, scripts and
+  automations) embedded in the image. On boot, when the new option
+  `auto_bootstrap_package` (default `true`) is on, the add-on copies
+  the file into `/homeassistant/packages/` and triggers the reload
+  services for `input_text`, `input_number`, `input_boolean`,
+  `script` and `automation`. The user gets a fully wired
+  configuration without having to clone the repo or paste anything by
+  hand.
+- **Idempotent + non-destructive**. If the target already has the
+  exact same bytes, nothing changes. If the user has hand-edited
+  their copy, we back it up to `*.bak.<timestamp>` before writing the
+  addon version.
+- New manifest flag `homeassistant_config: rw` so the addon can write
+  into the user's `/config` tree.
+- New option `auto_bootstrap_package: true` (schema-validated).
+- 7 new unit tests cover first-run, idempotent re-run, backup on
+  user edits, missing source, and the reload domains loop.
+
 ## 0.3.1 — 2026-06-15
 
 - **PNG charts in the weekly email**. The HTML report now embeds three

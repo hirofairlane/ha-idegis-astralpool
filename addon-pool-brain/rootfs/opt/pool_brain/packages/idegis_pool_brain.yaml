@@ -1,0 +1,203 @@
+# Pool Brain — Home Assistant complementary package
+#
+# Companion to the `idegis_pool_brain` add-on. While the add-on owns the
+# synthetic entities (published via MQTT discovery), this package adds
+# helpers, scripts and automations that bridge the add-on with the rest of
+# your HA configuration. Drop into /config/packages/ alongside the add-on
+# install.
+#
+# What's here:
+#   1. input_text / input_number / input_boolean — runtime config knobs.
+#   2. Scripts: turn_on_with_timer (depuradora / limpiafondos), shock_dose,
+#      acknowledge_brain_alert.
+#   3. Automations: keep the depuradora aligned with the brain
+#      recommendation, react to the pump anomaly binary_sensor, link the
+#      "Turn on with timer" button on the brain dashboard.
+
+# ----- HELPERS -------------------------------------------------------------
+
+input_text:
+  pool_brain_last_alert:
+    name: "Pool Brain — última alerta"
+    initial: ""
+    max: 255
+    icon: mdi:bell-alert
+
+input_number:
+  pool_brain_runtime_target_today:
+    name: "Pool Brain — objetivo runtime hoy (min)"
+    min: 0
+    max: 480
+    step: 15
+    initial: 120
+    unit_of_measurement: "min"
+    icon: mdi:timer-cog
+
+  pool_brain_pump_nominal_w:
+    name: "Pool Brain — depuradora nominal W"
+    min: 100
+    max: 5000
+    step: 50
+    initial: 1100
+    unit_of_measurement: "W"
+    icon: mdi:engine
+
+  pool_brain_cleaner_nominal_w:
+    name: "Pool Brain — limpiafondos nominal W"
+    min: 100
+    max: 3000
+    step: 50
+    initial: 600
+    unit_of_measurement: "W"
+    icon: mdi:robot-vacuum
+
+input_boolean:
+  pool_brain_auto_schedule:
+    name: "Pool Brain — programación automática"
+    initial: false
+    icon: mdi:calendar-clock
+
+# ----- SCRIPTS -------------------------------------------------------------
+
+script:
+  pool_brain_depuradora_timer:
+    alias: "Pool Brain — encender depuradora con timer"
+    description: >
+      Enciende la depuradora durante `minutes` y la apaga
+      automáticamente. Reutilizable desde el dashboard del addon o desde
+      automatizaciones HA.
+    mode: single
+    fields:
+      minutes:
+        description: "Duración en minutos"
+        selector:
+          number:
+            min: 1
+            max: 480
+            unit_of_measurement: "min"
+    sequence:
+      - service: switch.turn_on
+        target:
+          entity_id: switch.depuradora
+      - delay:
+          minutes: "{{ minutes | int }}"
+      - service: switch.turn_off
+        target:
+          entity_id: switch.depuradora
+
+  pool_brain_limpiafondos_timer:
+    alias: "Pool Brain — encender limpiafondos con timer"
+    mode: single
+    fields:
+      minutes:
+        description: "Duración en minutos"
+        selector:
+          number:
+            min: 1
+            max: 240
+            unit_of_measurement: "min"
+    sequence:
+      - service: switch.turn_on
+        target:
+          entity_id: switch.limpiafondos
+      - delay:
+          minutes: "{{ minutes | int }}"
+      - service: switch.turn_off
+        target:
+          entity_id: switch.limpiafondos
+
+  pool_brain_emergency_stop_all:
+    alias: "Pool Brain — parada de emergencia general"
+    mode: single
+    sequence:
+      - service: switch.turn_off
+        target:
+          entity_id:
+            - switch.depuradora
+            - switch.limpiafondos
+      - service: "{{ states('input_text.idegis_notify_service') }}"
+        data:
+          message: "🛑 Parada de emergencia GENERAL ejecutada desde el script HA."
+
+# ----- AUTOMATIONS --------------------------------------------------------
+
+automation:
+
+  - id: pool_brain_pump_anomaly_alert
+    alias: "Pool Brain — alerta anomalía depuradora"
+    description: >
+      Re-emite la alerta visual cuando el binary_sensor publicado por el
+      addon pasa a ON, además de la notificación Telegram que el propio
+      addon ya manda. Guarda el último mensaje en input_text.
+    mode: single
+    trigger:
+      - platform: state
+        entity_id: binary_sensor.idegis_brain_pump_anomaly
+        to: "on"
+    action:
+      - service: input_text.set_value
+        target:
+          entity_id: input_text.pool_brain_last_alert
+        data:
+          value: >
+            ⚠️ Anomalía depuradora detectada
+            ({{ now().strftime('%H:%M') }}).
+
+  - id: pool_brain_cleaner_anomaly_alert
+    alias: "Pool Brain — alerta anomalía limpiafondos"
+    mode: single
+    trigger:
+      - platform: state
+        entity_id: binary_sensor.idegis_brain_cleaner_anomaly
+        to: "on"
+    action:
+      - service: input_text.set_value
+        target:
+          entity_id: input_text.pool_brain_last_alert
+        data:
+          value: >
+            ⚠️ Anomalía limpiafondos detectada
+            ({{ now().strftime('%H:%M') }}).
+
+  - id: pool_brain_auto_schedule
+    alias: "Pool Brain — programación automática diaria"
+    description: >
+      A las 10:00 enciende la depuradora durante los minutos que el addon
+      recomienda para hoy. Sólo si `input_boolean.pool_brain_auto_schedule`
+      está activado. Por defecto desactivado para que el usuario decida.
+    mode: single
+    trigger:
+      - platform: time
+        at: "10:00:00"
+    condition:
+      - condition: state
+        entity_id: input_boolean.pool_brain_auto_schedule
+        state: "on"
+      - condition: numeric_state
+        entity_id: sensor.idegis_brain_recommended_minutes_today
+        above: 0
+    action:
+      - service: script.pool_brain_depuradora_timer
+        data:
+          minutes: "{{ states('sensor.idegis_brain_recommended_minutes_today') | int }}"
+
+  - id: pool_brain_water_unhealthy
+    alias: "Pool Brain — agua fuera de banda"
+    description: >
+      Alerta Telegram cuando el water_healthy del addon pasa a OFF y se
+      mantiene así >30 min (filtra ruido transitorio de inicio de sesión).
+    mode: single
+    trigger:
+      - platform: state
+        entity_id: binary_sensor.idegis_brain_water_healthy
+        to: "off"
+        for: "00:30:00"
+    action:
+      - service: "{{ states('input_text.idegis_notify_service') }}"
+        data:
+          message: >
+            🌊 Pool Brain — agua fuera de banda > 30 min.
+            Salud: {{ states('sensor.idegis_brain_health_score') }}/100.
+            pH band: {{ states('sensor.idegis_brain_ph_band') }} ·
+            Sal band: {{ states('sensor.idegis_brain_salt_band') }} ·
+            Temp band: {{ states('sensor.idegis_brain_temperature_band') }}.

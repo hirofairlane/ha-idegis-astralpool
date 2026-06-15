@@ -112,7 +112,7 @@ pip install -r requirements-dev.txt
 pytest
 ```
 
-Current state: **103 tests passing**.
+Current state: **110 tests passing**.
 
 ## License
 

@@ -20,6 +20,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from aggregator import AGG, COUNTERS
+import bootstrap
 from capturer_client import CAPTURER
 from config import SETTINGS
 from ha_client import HA
@@ -142,8 +143,32 @@ def schedule_weekly_report(scheduler: AsyncIOScheduler) -> None:
 # ----- Main -----------------------------------------------------------------
 
 
+async def maybe_bootstrap_package() -> None:
+    if not SETTINGS.auto_bootstrap_package:
+        log.info("auto_bootstrap_package disabled by option")
+        return
+    try:
+        result = bootstrap.write_package()
+        log.info(
+            "package bootstrap: changed=%s path=%s reason=%s backup=%s",
+            result["changed"],
+            result["path"],
+            result["reason"],
+            result.get("backup"),
+        )
+        if result["changed"]:
+            reloaded = await bootstrap.reload_domains(HA)
+            log.info("reload results: %s", reloaded)
+    except FileNotFoundError as exc:
+        log.error("bootstrap source missing: %s", exc)
+    except Exception as exc:  # noqa: BLE001
+        log.exception("bootstrap failed: %s", exc)
+
+
 async def main() -> None:
     log.info("Pool Brain starting (log level %s)", LOG_LEVEL)
+
+    await maybe_bootstrap_package()
 
     wire_mqtt_commands()
     await MQTT.start()
