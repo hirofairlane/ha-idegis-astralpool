@@ -19,6 +19,7 @@ from capturer_client import CAPTURER
 from config import SETTINGS
 from ha_client import HA
 from health import HealthInput, all_ok, health_score
+from history import History
 from mqtt_pub import MQTT
 from timer_engine import (
     TimerInput,
@@ -153,6 +154,10 @@ class Aggregator:
     def __init__(self) -> None:
         self.snapshot: dict[str, Any] = {}
         self._last_pump_minute_marked = 0.0
+        # 48 samples at one every 30 min = 24 h of history per metric.
+        # Aggregator ticks every 30 s, so decimation=60 commits one sample
+        # every 30 min on the dot.
+        self.history = History(capacity=48, decimation=60)
 
     async def tick(self) -> None:
         # 1. Fetch upstream
@@ -257,7 +262,20 @@ class Aggregator:
             "ON" if first_minutes else "OFF",
         )
 
-        # 8. Cache snapshot for HTTP API
+        # 8. Push to history for sparklines.
+        self.history.record(
+            {
+                "health_score": float(score),
+                "ph": h_in.ph,
+                "salt_g_l": h_in.salt_g_l,
+                "temperature_c": h_in.temperature_c,
+                "production_pct": h_in.production_pct,
+                "pump_w": float(pump_w),
+                "cleaner_w": float(cleaner_w),
+            }
+        )
+
+        # 9. Cache snapshot for HTTP API
         self.snapshot = {
             "ts": _now_local().isoformat(),
             "online": (cap.get("online") if isinstance(cap.get("online"), bool) else True),

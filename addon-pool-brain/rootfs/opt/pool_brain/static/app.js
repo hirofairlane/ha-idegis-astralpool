@@ -69,6 +69,59 @@ function paintProgress(today, recommended) {
   }
 }
 
+function drawSparkline(svgId, points) {
+  const svg = $(svgId);
+  if (!svg) return;
+  // Filter null points and bail if too few.
+  const real = points.filter((v) => v !== null && v !== undefined && !Number.isNaN(v));
+  if (real.length < 2) {
+    svg.innerHTML = '<text x="50" y="20" font-size="9" text-anchor="middle" fill="#aaa">sin datos</text>';
+    return;
+  }
+  const min = Math.min(...real);
+  const max = Math.max(...real);
+  const range = max - min || 1;
+  // Map onto a 0-100 / 0-30 viewBox with 2 px padding.
+  const n = points.length;
+  const stepX = (100 - 4) / Math.max(1, n - 1);
+  let d = "";
+  let lastX = null;
+  let lastY = null;
+  for (let i = 0; i < n; i++) {
+    const v = points[i];
+    if (v === null || v === undefined || Number.isNaN(v)) continue;
+    const x = 2 + i * stepX;
+    const y = 28 - ((v - min) / range) * 24;
+    if (d === "") {
+      d = `M ${x.toFixed(1)} ${y.toFixed(1)}`;
+    } else {
+      d += ` L ${x.toFixed(1)} ${y.toFixed(1)}`;
+    }
+    lastX = x;
+    lastY = y;
+  }
+  let circle = "";
+  if (lastX !== null) {
+    circle = `<circle cx="${lastX.toFixed(1)}" cy="${lastY.toFixed(1)}" r="2.2"/>`;
+  }
+  svg.innerHTML = `<path d="${d}"/>${circle}`;
+}
+
+async function refreshHistory() {
+  try {
+    const r = await fetch("api/brain/history");
+    if (!r.ok) return;
+    const h = await r.json();
+    const s = h.series || {};
+    drawSparkline("spark-ph", s.ph || []);
+    drawSparkline("spark-salt", s.salt_g_l || []);
+    drawSparkline("spark-temp", s.temperature_c || []);
+    drawSparkline("spark-health", s.health_score || []);
+  } catch (e) {
+    console.warn("history fetch failed", e);
+  }
+}
+
 async function refresh() {
   try {
     const r = await fetch("api/brain/state");
@@ -124,5 +177,8 @@ window.addEventListener("DOMContentLoaded", () => {
     alert("Reporte encolado. Llega en unos segundos por el canal configurado.");
   };
   refresh();
+  refreshHistory();
   setInterval(refresh, 30000);
+  // Sparklines update slower since the backend decimates every 30 min.
+  setInterval(refreshHistory, 60000);
 });

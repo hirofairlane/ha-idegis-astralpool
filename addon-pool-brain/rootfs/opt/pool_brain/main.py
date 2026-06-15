@@ -47,6 +47,16 @@ async def api_state(request: web.Request) -> web.Response:  # noqa: ARG001
     return web.json_response(AGG.snapshot or {})
 
 
+async def api_history(request: web.Request) -> web.Response:  # noqa: ARG001
+    return web.json_response(
+        {
+            "capacity": AGG.history.capacity,
+            "decimation_ticks": AGG.history.decimation,
+            "series": AGG.history.snapshot(),
+        }
+    )
+
+
 async def api_health(request: web.Request) -> web.Response:  # noqa: ARG001
     return web.json_response(
         {
@@ -85,6 +95,7 @@ def build_app() -> web.Application:
     app = web.Application()
     app.router.add_get("/", root)
     app.router.add_get("/api/brain/state", api_state)
+    app.router.add_get("/api/brain/history", api_history)
     app.router.add_get("/api/brain/health", api_health)
     app.router.add_post("/api/brain/run-report", api_run_report)
     app.router.add_post("/api/brain/emergency-stop/{which}", api_emergency_stop)

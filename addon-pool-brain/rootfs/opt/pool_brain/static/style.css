@@ -108,6 +108,35 @@ main { display: grid; gap: 18px; }
   text-transform: uppercase;
 }
 
+/* Sparklines */
+.sparkline {
+  display: block;
+  width: 100%;
+  height: 30px;
+  margin-top: 10px;
+  background: #fff5d6;
+  border: 2px solid var(--ink);
+  border-radius: 4px;
+}
+.sparkline path {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.sparkline circle {
+  fill: var(--accent);
+  stroke: var(--ink);
+  stroke-width: 1.5;
+}
+.hero-spark {
+  grid-column: 1 / -1;
+  height: 36px;
+  margin-top: 14px;
+  background: #ffffff;
+}
+
 /* Hero card with health score */
 .hero {
   display: grid;

@@ -5,7 +5,7 @@ description: >-
   telemetry into a TFP-aware health score, smart filtration scheduler,
   pump anomaly watchdog with emergency stop, weekly HTML email report and
   a comic-styled ingress dashboard.
-version: "0.2.0"
+version: "0.3.0"
 slug: "idegis_pool_brain"
 init: false
 arch:

@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.3.0 — 2026-06-15
+
+- **24 h sparklines** on the comic dashboard. Each vital signs panel
+  (pH, salt, temperature) plus the health score gauge gets an SVG
+  sparkline showing the last 24 h of decimated samples — pure vanilla
+  JS, no external libs.
+- **New endpoint** `GET /api/brain/history` exposes the ring-buffer
+  snapshot as JSON so other dashboards / scripts can reuse it.
+- **`history.py`** module: in-memory ring buffer with built-in
+  decimation. Default capacity 48 samples × decimation 60 ticks =
+  24 h at 30 s aggregator cadence. Easily testable.
+
 ## 0.2.0 — 2026-06-15
 
 - **Auto-learned pump nominal W**. New `nominal_learner.py` module
