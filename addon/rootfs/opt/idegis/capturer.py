@@ -1094,16 +1094,20 @@ def build_proxy_app() -> web.Application:
     return app
 
 
+ADDON_VERSION = "0.6.4"
+
+
 async def ingress_index(request: web.Request) -> web.Response:  # noqa: ARG001
     """Serve the dashboard SPA from static/index.html.
 
-    The page is a single-file vanilla JS app that fetches
-    /api/idegis/state, /timeseries and /activity and renders charts
-    inline. No CDN dependencies."""
+    Injects {{VERSION}} as cache-buster on the css/js asset links so
+    bumping the addon forces the browser to reload them. Falls back to
+    the legacy inline page if the static dir is missing."""
     idx = STATIC_DIR / "index.html"
     if idx.exists():
-        return web.FileResponse(idx)
-    # Fallback minimal status page if the static dir is missing.
+        html = idx.read_text().replace("{{VERSION}}", ADDON_VERSION)
+        return web.Response(text=html, content_type="text/html",
+                            headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
     return await _legacy_ingress_index(request)
 
 
