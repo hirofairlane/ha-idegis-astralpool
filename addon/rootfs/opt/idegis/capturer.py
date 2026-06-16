@@ -51,6 +51,11 @@ DEFAULTS = {
     "pool_volume_m3": 37.0,
     "pump_nominal_flow_m3_h": 12.0,
     "energy_price_eur_kwh": 0.18,
+    "cell_capacity_g_h": 24.0,
+    "target_production_pct": 100,
+    "chlorine_demand_ppm_per_day": 1.0,
+    "min_turnovers_per_day": 0.5,
+    "indoor_pool": True,
     "pump_running_threshold_w": 1.0,
     "pump_poll_interval_s": 5,
 }
@@ -79,6 +84,11 @@ CLEANER_SWITCH_ENTITY = OPTS.get("cleaner_switch_entity") or ""
 POOL_VOLUME_M3 = float(OPTS.get("pool_volume_m3") or 37.0)
 PUMP_NOMINAL_FLOW_M3_H = float(OPTS.get("pump_nominal_flow_m3_h") or 12.0)
 ENERGY_PRICE_EUR_KWH = float(OPTS.get("energy_price_eur_kwh") or 0.18)
+CELL_CAPACITY_G_H = float(OPTS.get("cell_capacity_g_h") or 24.0)
+TARGET_PRODUCTION_PCT = int(OPTS.get("target_production_pct") or 100)
+CHLORINE_DEMAND_PPM_PER_DAY = float(OPTS.get("chlorine_demand_ppm_per_day") or 1.0)
+MIN_TURNOVERS_PER_DAY = float(OPTS.get("min_turnovers_per_day") or 0.5)
+INDOOR_POOL = bool(OPTS.get("indoor_pool") if OPTS.get("indoor_pool") is not None else True)
 PUMP_THRESHOLD_W = float(OPTS.get("pump_running_threshold_w") or 100.0)
 PUMP_POLL_S = int(OPTS.get("pump_poll_interval_s") or 5)
 
@@ -807,44 +817,104 @@ async def api_pumps(request: web.Request) -> web.Response:  # noqa: ARG001
 
 
 def _temp_multiplier(temp_c: float | None) -> float:
-    """Pool turnover demand scales with water temperature.
-
-    Below 20 °C the filter can do less; above 32 °C the algae/Cl demand
-    rises and we want more turns per day. Indoor pool typical (the
-    reference install).
+    """Chlorine demand scales with water temperature: warmer water
+    consumes chlorine faster (kinetics + bacteriostatic margin).
     """
     if temp_c is None:
         return 1.0
     if temp_c < 20:
-        return 0.6
+        return 0.7
     if temp_c < 24:
-        return 0.8
+        return 0.85
     if temp_c < 28:
         return 1.0
     if temp_c < 32:
-        return 1.2
+        return 1.15
     if temp_c < 36:
-        return 1.4
-    return 1.6
+        return 1.3
+    return 1.5
+
+
+def _compute_recommendation(
+    volume_m3: float,
+    flow_m3_h: float,
+    cell_g_h: float,
+    target_pct: int,
+    chlorine_demand_ppm_day: float,
+    min_turnovers_per_day: float,
+    temp_c: float | None,
+) -> dict:
+    """Combine chlorine-demand and filter-turnover constraints.
+
+    The driver for an indoor pool is **chlorine production**, not
+    turnover. With the cover on and zero UV exposure the chlorine
+    decay is slow, so the pump's job is mainly to electrolyse and
+    distribute. We compute two candidates and take the larger:
+
+    1. **Chlorine-demand minutes** — how long the cell has to run at
+       the target production percentage to replace the daily chlorine
+       consumption.
+
+       daily_demand_g = chlorine_demand_ppm_day * volume_m3   (mg/L * m³ → g)
+       cl_per_min     = cell_g_h * (target_pct/100) / 60      (g/min)
+       chl_minutes    = (daily_demand_g / cl_per_min) * temp_mult
+
+    2. **Turnover minutes** — minimal hydraulic mixing.
+
+       turnover_minutes = (volume_m3 / flow_m3_h) * 60 * min_turnovers_per_day
+
+    The driver field tells the dashboard which constraint won.
+    """
+    cl_per_min = cell_g_h * (target_pct / 100) / 60.0
+    daily_demand_g = chlorine_demand_ppm_day * volume_m3
+    temp_mult = _temp_multiplier(temp_c)
+    chl_minutes = (daily_demand_g / cl_per_min) * temp_mult if cl_per_min > 0 else 0
+    turnover_minutes = (
+        (volume_m3 / flow_m3_h) * 60 * min_turnovers_per_day if flow_m3_h > 0 else 0
+    )
+    rec = max(chl_minutes, turnover_minutes)
+    driver = "chlorine_demand" if chl_minutes >= turnover_minutes else "turnover"
+    return {
+        "recommended_minutes_today": round(rec),
+        "driver": driver,
+        "chlorine_demand_minutes": round(chl_minutes),
+        "turnover_minutes": round(turnover_minutes),
+        "temperature_multiplier": temp_mult,
+        "daily_chlorine_demand_g": round(daily_demand_g, 1),
+        "cell_output_g_per_min": round(cl_per_min, 3),
+    }
 
 
 async def api_recommendation(request: web.Request) -> web.Response:  # noqa: ARG001
     """Recommend a daily and weekly filtration time.
 
-    Base formula: 1 turnover/day * (volume_m3 / flow_m3_h) * 60 minutes.
-    Adjusted by current water temperature. Compares against actual
-    runtime taken from /api/idegis/activity for the last 7 days.
+    Hybrid model that picks the larger of two constraints:
+    - **Chlorine demand**: minutes for the cell to electrolyse enough
+      chlorine to replace daily decay (driven by volume × demand vs
+      cell output × target %).
+    - **Turnover**: minimal hydraulic mixing.
+
+    Indoor covered pools without UV exposure use far less chlorine,
+    so chlorine_demand typically wins at low values and the
+    recommendation drops well below the historical "1 turnover/day"
+    rule of thumb.
     """
-    # Pull the temperature from the sticky decoded measurements.
     ms = summarise_measurements(decode_fields(state.sticky_fields)) or {}
     temp_c = (ms.get("temperature") or {}).get("value")
 
-    base_min_per_day = (POOL_VOLUME_M3 / PUMP_NOMINAL_FLOW_M3_H) * 60
-    mult = _temp_multiplier(temp_c)
-    rec_min_today = round(base_min_per_day * mult)
+    calc = _compute_recommendation(
+        volume_m3=POOL_VOLUME_M3,
+        flow_m3_h=PUMP_NOMINAL_FLOW_M3_H,
+        cell_g_h=CELL_CAPACITY_G_H,
+        target_pct=TARGET_PRODUCTION_PCT,
+        chlorine_demand_ppm_day=CHLORINE_DEMAND_PPM_PER_DAY,
+        min_turnovers_per_day=MIN_TURNOVERS_PER_DAY,
+        temp_c=temp_c,
+    )
+    rec_min_today = calc["recommended_minutes_today"]
     rec_min_week = rec_min_today * 7
 
-    # Actual runtime from the activity log (uses pump_running edges).
+    # Real runtime from the activity log (uses pump_running edges).
     now = datetime.now(timezone.utc)
     records = _read_jsonl_window(hours=7 * 24)
     by_day: dict[str, float] = {}
@@ -876,8 +946,18 @@ async def api_recommendation(request: web.Request) -> web.Response:  # noqa: ARG
     return web.json_response({
         "pool_volume_m3": POOL_VOLUME_M3,
         "nominal_flow_m3_h": PUMP_NOMINAL_FLOW_M3_H,
+        "cell_capacity_g_h": CELL_CAPACITY_G_H,
+        "target_production_pct": TARGET_PRODUCTION_PCT,
+        "chlorine_demand_ppm_per_day": CHLORINE_DEMAND_PPM_PER_DAY,
+        "min_turnovers_per_day": MIN_TURNOVERS_PER_DAY,
+        "indoor_pool": INDOOR_POOL,
         "water_temperature_c": temp_c,
-        "temperature_multiplier": mult,
+        "temperature_multiplier": calc["temperature_multiplier"],
+        "daily_chlorine_demand_g": calc["daily_chlorine_demand_g"],
+        "cell_output_g_per_min": calc["cell_output_g_per_min"],
+        "chlorine_demand_minutes": calc["chlorine_demand_minutes"],
+        "turnover_minutes": calc["turnover_minutes"],
+        "driver": calc["driver"],
         "recommended_minutes_today": rec_min_today,
         "recommended_minutes_week": rec_min_week,
         "real_minutes_today": real_min_today,

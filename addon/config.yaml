@@ -36,6 +36,11 @@ options:
   pool_volume_m3: 37.0
   pump_nominal_flow_m3_h: 12.0
   energy_price_eur_kwh: 0.18
+  cell_capacity_g_h: 24.0
+  target_production_pct: 100
+  chlorine_demand_ppm_per_day: 1.0
+  min_turnovers_per_day: 0.5
+  indoor_pool: true
   pump_running_threshold_w: 1.0
   pump_poll_interval_s: 5
 schema:
@@ -51,6 +56,11 @@ schema:
   pool_volume_m3: float(1,500)
   pump_nominal_flow_m3_h: float(1,100)
   energy_price_eur_kwh: float(0,2)
+  cell_capacity_g_h: float(1,200)
+  target_production_pct: int(1,100)
+  chlorine_demand_ppm_per_day: float(0.1,10)
+  min_turnovers_per_day: float(0.1,5)
+  indoor_pool: bool
   pump_running_threshold_w: float(0,10000)
   pump_poll_interval_s: int(1,60)
 host_network: false

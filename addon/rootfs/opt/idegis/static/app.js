@@ -345,14 +345,50 @@ async function refreshRecommendation() {
     const r = await fetch("api/idegis/recommendation");
     if (!r.ok) return;
     const x = await r.json();
+
     $("reco-meta").textContent =
-      `${fmt.num(x.pool_volume_m3 * 1000, 0)} L · ${fmt.num(x.nominal_flow_m3_h, 1)} m³/h`;
+      `${fmt.num(x.pool_volume_m3 * 1000, 0)} L · ${fmt.num(x.nominal_flow_m3_h, 1)} m³/h · célula ${fmt.num(x.cell_capacity_g_h, 0)} g/h`;
     $("reco-today").innerHTML = fmt.withUnit(x.recommended_minutes_today, "min");
     $("reco-week").innerHTML = fmt.withUnit(x.recommended_minutes_week, "min");
     $("reco-real-today").textContent = `${fmt.num(x.real_minutes_today, 0)} min`;
     $("reco-real-week").textContent = `${fmt.num(x.real_minutes_week, 0)} min`;
     $("reco-cov-today").textContent = `${fmt.num(x.coverage_today_pct, 0)} %`;
     $("reco-cov-week").textContent = `${fmt.num(x.coverage_week_pct, 0)} %`;
+
+    $("reco-driver").textContent = x.driver === "chlorine_demand"
+      ? "Limitado por producción de cloro de la célula."
+      : "Limitado por turnover hidráulico mínimo.";
+
+    // Verbose formula breakdown so the user can audit how the number
+    // came out.
+    const chlWin = x.driver === "chlorine_demand";
+    const tempC = x.water_temperature_c ?? "—";
+    $("reco-formula").innerHTML = `
+      <div class="ff-row">
+        <span>🌡️ Temp agua</span>
+        <span><b>${tempC} °C</b> → multiplicador <b>${fmt.num(x.temperature_multiplier, 2)}×</b></span>
+      </div>
+      <div class="ff-row">
+        <span>💧 Demanda Cl/día</span>
+        <span><b>${fmt.num(x.chlorine_demand_ppm_per_day, 1)} ppm × ${fmt.num(x.pool_volume_m3, 0)} m³ = ${fmt.num(x.daily_chlorine_demand_g, 1)} g</b></span>
+      </div>
+      <div class="ff-row">
+        <span>⚡ Célula al ${x.target_production_pct}%</span>
+        <span><b>${fmt.num(x.cell_output_g_per_min, 3)} g/min</b> (${fmt.num(x.cell_capacity_g_h, 0)} g/h × ${x.target_production_pct}/100 / 60)</span>
+      </div>
+      <div class="ff-row">
+        <span class="${chlWin ? 'winner' : 'loser'}">→ Cloro</span>
+        <span class="${chlWin ? 'winner' : 'loser'}"><b>${x.chlorine_demand_minutes} min</b> (demanda × temp / output)</span>
+      </div>
+      <div class="ff-row">
+        <span class="${!chlWin ? 'winner' : 'loser'}">→ Turnover</span>
+        <span class="${!chlWin ? 'winner' : 'loser'}"><b>${x.turnover_minutes} min</b> (${fmt.num(x.pool_volume_m3, 0)}/${fmt.num(x.nominal_flow_m3_h, 1)} × 60 × ${x.min_turnovers_per_day})</span>
+      </div>
+      <div class="ff-row">
+        <span>= Recomendado</span>
+        <span><b>max(${x.chlorine_demand_minutes}, ${x.turnover_minutes}) = ${x.recommended_minutes_today} min/día</b></span>
+      </div>
+    `;
 
     function paintBar(barId, pct) {
       const bar = $(barId);

@@ -136,7 +136,7 @@
   <section class="panel">
     <header class="panel-header">
       <h2>Recomendación de filtración</h2>
-      <span class="muted" id="reco-meta">— L · — m³/h</span>
+      <span class="muted" id="reco-meta">— L · — m³/h · célula — g/h</span>
     </header>
     <div class="reco">
       <div class="reco-side">
@@ -144,16 +144,17 @@
         <div class="rv" id="reco-today">— min</div>
         <div class="rs"><span id="reco-real-today">—</span> reales · <span id="reco-cov-today">—</span> cubierto</div>
         <div class="reco-bar"><div class="reco-bar-fill" id="reco-bar-today"></div></div>
-        <div class="reco-meta">Recomendado según temperatura del agua actual.</div>
+        <div class="reco-meta" id="reco-driver">—</div>
       </div>
       <div class="reco-side">
         <div class="rl">Semana</div>
         <div class="rv" id="reco-week">— min</div>
         <div class="rs"><span id="reco-real-week">—</span> reales · <span id="reco-cov-week">—</span> cubierto</div>
         <div class="reco-bar"><div class="reco-bar-fill" id="reco-bar-week"></div></div>
-        <div class="reco-meta">7 turnovers a 1×/día con caudal nominal.</div>
+        <div class="reco-meta">7 días al ritmo recomendado de hoy.</div>
       </div>
     </div>
+    <div class="reco-formula" id="reco-formula"></div>
   </section>
 
   <!-- Last session -->
