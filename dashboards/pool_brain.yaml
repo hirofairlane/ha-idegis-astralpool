@@ -1,0 +1,274 @@
+# Pool Brain — Lovelace dashboard
+#
+# Drop this file into /config/dashboards/ and register it in
+# configuration.yaml as:
+#
+#   lovelace:
+#     dashboards:
+#       pool-brain:
+#         mode: yaml
+#         title: Pool Brain
+#         icon: mdi:brain
+#         show_in_sidebar: true
+#         filename: dashboards/pool_brain.yaml
+#
+# Then reload Lovelace from HA. The dashboard uses only stock cards
+# (gauge, glance, entities, history-graph, button, grid) so it works
+# without HACS. All entities come from the idegis_pool_brain add-on
+# (MQTT auto-discovery) and the idegis_capturer cloud add-on.
+
+title: Pool Brain
+views:
+  - title: Resumen
+    path: resumen
+    icon: mdi:pool
+    type: sections
+    max_columns: 3
+    sections:
+
+      # ─── Salud ────────────────────────────────────────────────────────
+      - type: grid
+        title: Salud del agua
+        cards:
+          - type: gauge
+            entity: sensor.idegis_brain_health_score
+            name: Pool health
+            min: 0
+            max: 100
+            needle: true
+            severity:
+              green: 80
+              yellow: 60
+              red: 0
+          - type: glance
+            show_state: true
+            columns: 4
+            entities:
+              - entity: sensor.idegis_brain_ph_band
+                name: pH
+              - entity: sensor.idegis_brain_salt_band
+                name: Sal
+              - entity: sensor.idegis_brain_temperature_band
+                name: Temp
+              - entity: sensor.idegis_brain_production_band
+                name: Producción
+          - type: entities
+            title: Estado
+            entities:
+              - entity: binary_sensor.idegis_brain_water_healthy
+                name: Agua en banda
+              - entity: binary_sensor.idegis_brain_first_minutes_window
+                name: Lecturas no fiables (primeros minutos)
+              - entity: binary_sensor.idegis_chlorinator_online
+                name: Idegis cloud online
+              - entity: sensor.idegis_chlorinator_seconds_since_last_request
+                name: Último contacto Idegis
+
+      # ─── Constantes vitales ──────────────────────────────────────────
+      - type: grid
+        title: Constantes vitales
+        cards:
+          - type: glance
+            columns: 4
+            state_color: false
+            entities:
+              - entity: sensor.idegis_chlorinator_last_session_ph_avg
+                name: pH (sesión)
+              - entity: sensor.idegis_chlorinator_last_session_salinity_avg
+                name: Sal g/L
+              - entity: sensor.idegis_chlorinator_last_session_temperature_avg
+                name: Temp °C
+              - entity: sensor.idegis_chlorinator_last_session_production_avg
+                name: Cl %
+          - type: history-graph
+            hours_to_show: 24
+            refresh_interval: 60
+            title: pH y salinidad — 24 h
+            entities:
+              - sensor.idegis_chlorinator_last_session_ph_avg
+              - sensor.idegis_chlorinator_last_session_salinity_avg
+          - type: history-graph
+            hours_to_show: 24
+            refresh_interval: 60
+            title: Temperatura y producción — 24 h
+            entities:
+              - sensor.idegis_chlorinator_last_session_temperature_avg
+              - sensor.idegis_chlorinator_last_session_production_avg
+
+      # ─── Filtración ──────────────────────────────────────────────────
+      - type: grid
+        title: Filtración (depuradora)
+        cards:
+          - type: glance
+            columns: 4
+            entities:
+              - entity: sensor.idegis_brain_recommended_minutes_today
+                name: Recomendado hoy
+              - entity: sensor.idegis_brain_runtime_minutes_today
+                name: Funcionando hoy
+              - entity: sensor.idegis_brain_runtime_minutes_week
+                name: 7 días
+              - entity: sensor.idegis_brain_turnovers_today
+                name: Turnovers hoy
+          - type: history-graph
+            hours_to_show: 168   # 7 días
+            refresh_interval: 300
+            title: Runtime y kWh — 7 d
+            entities:
+              - sensor.idegis_brain_runtime_minutes_today
+              - sensor.idegis_brain_filter_kwh_today
+          - type: entities
+            title: Detalle motor
+            entities:
+              - entity: switch.depuradora
+                name: Depuradora
+              - entity: sensor.idegis_brain_pump_avg_power
+                name: Consumo actual
+              - entity: sensor.idegis_brain_pump_nominal_w_learned
+                name: Nominal (aprendido)
+              - entity: sensor.idegis_brain_filter_kwh_today
+                name: kWh hoy
+              - entity: sensor.idegis_brain_filter_kwh_week
+                name: kWh semana
+
+      # ─── Limpiafondos ────────────────────────────────────────────────
+      - type: grid
+        title: Limpiafondos
+        cards:
+          - type: entities
+            entities:
+              - entity: switch.limpiafondos
+                name: Limpiafondos
+              - entity: sensor.idegis_brain_cleaner_nominal_w_learned
+                name: Nominal (aprendido)
+              - entity: sensor.idegis_brain_cleaner_kwh_today
+                name: kWh hoy
+              - entity: sensor.idegis_brain_cleaner_kwh_week
+                name: kWh semana
+              - entity: binary_sensor.idegis_brain_cleaner_anomaly
+                name: Anomalía
+          - type: history-graph
+            hours_to_show: 168
+            title: kWh limpiafondos — 7 d
+            entities:
+              - sensor.idegis_brain_cleaner_kwh_today
+
+      # ─── Acciones ───────────────────────────────────────────────────
+      - type: grid
+        title: Acciones rápidas
+        cards:
+          - type: grid
+            columns: 3
+            square: false
+            cards:
+              - type: button
+                entity: switch.depuradora
+                name: Depuradora
+                icon: mdi:pump
+                tap_action: { action: toggle }
+                show_state: true
+              - type: button
+                entity: switch.limpiafondos
+                name: Limpiafondos
+                icon: mdi:robot-vacuum
+                tap_action: { action: toggle }
+                show_state: true
+              - type: button
+                entity: switch.luz_piscina
+                name: Luz piscina
+                icon: mdi:lightbulb
+                tap_action: { action: toggle }
+                show_state: true
+          - type: entities
+            title: Programación
+            entities:
+              - entity: input_boolean.pool_brain_auto_schedule
+                name: Programación automática diaria
+              - entity: input_number.pool_brain_runtime_target_today
+                name: Objetivo hoy (min)
+              - type: call-service
+                name: ▶ Encender depuradora con el recomendado de hoy
+                icon: mdi:timer-play
+                service: script.pool_brain_depuradora_timer
+                service_data:
+                  minutes: >
+                    {{ states('sensor.idegis_brain_recommended_minutes_today') | int }}
+              - type: call-service
+                name: ▶ Limpiafondos 60 min
+                icon: mdi:robot-vacuum-variant
+                service: script.pool_brain_limpiafondos_timer
+                service_data:
+                  minutes: 60
+          - type: entities
+            title: 🛑 Emergencia
+            entities:
+              - type: button
+                name: Parar depuradora
+                icon: mdi:engine-off
+                action_name: PARAR
+                tap_action:
+                  action: call-service
+                  service: button.press
+                  data:
+                    entity_id: button.idegis_brain_emergency_stop_pump
+              - type: button
+                name: Parar limpiafondos
+                icon: mdi:robot-vacuum-off
+                action_name: PARAR
+                tap_action:
+                  action: call-service
+                  service: button.press
+                  data:
+                    entity_id: button.idegis_brain_emergency_stop_cleaner
+              - type: button
+                name: Parada GENERAL
+                icon: mdi:alert-octagon
+                action_name: STOP
+                tap_action:
+                  action: call-service
+                  service: button.press
+                  data:
+                    entity_id: button.idegis_brain_emergency_stop_all
+
+      # ─── Reporte semanal ────────────────────────────────────────────
+      - type: grid
+        title: Reporte semanal
+        cards:
+          - type: entities
+            entities:
+              - entity: input_text.pool_brain_email_target
+                name: Destinatario del reporte
+              - type: button
+                name: 📧 Enviar reporte ahora
+                icon: mdi:email-send
+                action_name: ENVIAR
+                tap_action:
+                  action: call-service
+                  service: button.press
+                  data:
+                    entity_id: button.idegis_brain_run_weekly_report_now
+              - entity: input_text.pool_brain_last_alert
+                name: Última alerta
+
+      # ─── Diagnóstico ───────────────────────────────────────────────
+      - type: grid
+        title: Diagnóstico
+        cards:
+          - type: entities
+            title: Vía A — cloud capturer
+            entities:
+              - sensor.idegis_chlorinator_polling_rate
+              - sensor.idegis_chlorinator_captured_requests
+              - sensor.idegis_chlorinator_read_php_calls
+              - sensor.idegis_chlorinator_write_php_calls
+              - sensor.idegis_chlorinator_device_serial
+              - update.idegis_astralpool_cloud_capturer_update
+          - type: entities
+            title: Vía B — ESP RS485
+            entities:
+              - sensor.bus_idegis_uptime
+              - sensor.bus_idegis_wifi_signal
+              - sensor.bus_idegis_esp_internal_temperature
+              - sensor.bus_idegis_ph_modbus
+              - sensor.bus_idegis_capabilities_raw
+              - button.bus_idegis_restart_esp
