@@ -524,6 +524,169 @@ async def api_history(request: web.Request) -> web.Response:
     return web.json_response({"items": list(state.history)[-n:]})
 
 
+# ----- Time-series endpoints (used by the ingress dashboard) ---------------
+
+
+def _read_jsonl_window(hours: float) -> list[dict]:
+    """Stream the persistent jsonl and return records inside the last
+    `hours` hours. Skips malformed lines silently. Optimised to avoid
+    loading the whole file when it grows large."""
+    if not JSONL_PATH.exists():
+        return []
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+    out: list[dict] = []
+    try:
+        with JSONL_PATH.open("r") as f:
+            for line in f:
+                try:
+                    rec = json.loads(line)
+                    ts = datetime.fromisoformat(rec["ts"])
+                    if ts >= cutoff:
+                        out.append(rec)
+                except Exception:  # noqa: BLE001
+                    continue
+    except Exception as exc:  # noqa: BLE001
+        log.warning("read jsonl failed: %s", exc)
+    return out
+
+
+def _decimate(samples: list[dict], target: int) -> list[dict]:
+    """Down-sample a series to roughly `target` points."""
+    if len(samples) <= target:
+        return samples
+    step = len(samples) / target
+    return [samples[int(i * step)] for i in range(target)]
+
+
+async def api_timeseries(request: web.Request) -> web.Response:
+    """Return decimated time series of measurements over the last N hours.
+
+    Query: ?hours=24&points=200 (defaults shown).
+    Response: { ph: [{t, v}], salinity: [...], temperature: [...],
+                production: [...] }
+    """
+    try:
+        hours = float(request.rel_url.query.get("hours", "24"))
+    except ValueError:
+        hours = 24.0
+    try:
+        points = int(request.rel_url.query.get("points", "240"))
+    except ValueError:
+        points = 240
+    points = max(10, min(points, 2000))
+
+    records = _read_jsonl_window(hours)
+
+    raw: dict[str, list[dict]] = {
+        "ph": [],
+        "salinity": [],
+        "temperature": [],
+        "production": [],
+    }
+    metric_map = {
+        "ph": "ph",
+        "salinity": "salinity",
+        "water_temperature": "temperature",
+        "chlorine_production": "production",
+    }
+
+    for rec in records:
+        if rec.get("endpoint") != "write":
+            continue
+        fields = rec.get("fields") or {}
+        ms = summarise_measurements(decode_fields(fields))
+        if not ms:
+            continue
+        ts = rec["ts"]
+        for src, dst in metric_map.items():
+            m = ms.get(src)
+            if isinstance(m, dict) and m.get("value") is not None:
+                raw[dst].append({"t": ts, "v": m["value"]})
+
+    result = {k: _decimate(v, points) for k, v in raw.items()}
+    return web.json_response({
+        "hours_requested": hours,
+        "points": points,
+        "series": result,
+    })
+
+
+async def api_activity(request: web.Request) -> web.Response:
+    """Pump-running activity aggregated per day over the last N days.
+
+    Response: {
+      days: [{day, running_minutes, start_count}, ...],
+      last_start: ISO timestamp or null,
+      total_running_hours_week: float,
+      total_running_hours_month: float,
+    }
+    """
+    try:
+        days = int(request.rel_url.query.get("days", "30"))
+    except ValueError:
+        days = 30
+    days = max(1, min(days, 90))
+
+    records = _read_jsonl_window(hours=days * 24)
+    # Sort defensively (jsonl is append-only so should already be sorted).
+    records.sort(key=lambda r: r.get("ts", ""))
+
+    by_day: dict[str, dict] = {}
+    last_start: str | None = None
+    prev_running: bool = False
+    prev_ts: datetime | None = None
+
+    for rec in records:
+        running = bool(rec.get("pump_running"))
+        try:
+            ts = datetime.fromisoformat(rec["ts"])
+        except Exception:  # noqa: BLE001
+            continue
+
+        # Edge detection: off -> on means a new pump start.
+        if running and not prev_running:
+            last_start = rec["ts"]
+            day_key = ts.astimezone().date().isoformat()
+            slot = by_day.setdefault(
+                day_key, {"day": day_key, "running_minutes": 0, "start_count": 0}
+            )
+            slot["start_count"] += 1
+
+        # Running time accumulation: between consecutive records where
+        # pump_running is true, count the gap in minutes (capped at 15
+        # min to avoid counting huge gaps when the addon was offline).
+        if prev_running and prev_ts is not None:
+            delta = (ts - prev_ts).total_seconds() / 60
+            if 0 < delta <= 15:
+                day_key = prev_ts.astimezone().date().isoformat()
+                slot = by_day.setdefault(
+                    day_key, {"day": day_key, "running_minutes": 0, "start_count": 0}
+                )
+                slot["running_minutes"] += delta
+
+        prev_running = running
+        prev_ts = ts
+
+    # Fill missing days with zero so the chart shows continuous bars.
+    today = datetime.now().astimezone().date()
+    filled: list[dict] = []
+    for i in range(days - 1, -1, -1):
+        d = (today - timedelta(days=i)).isoformat()
+        slot = by_day.get(d) or {"day": d, "running_minutes": 0, "start_count": 0}
+        slot["running_minutes"] = round(slot["running_minutes"], 1)
+        filled.append(slot)
+
+    week = sum(s["running_minutes"] for s in filled[-7:]) / 60
+    month = sum(s["running_minutes"] for s in filled) / 60
+
+    return web.json_response({
+        "days": filled,
+        "last_start": last_start,
+        "total_running_hours_week": round(week, 2),
+        "total_running_hours_month": round(month, 2),
+    })
+
+
 async def api_last_response(request: web.Request) -> web.Response:  # noqa: ARG001
     if not state.last_response:
         return web.json_response({"available": False})
@@ -681,12 +844,20 @@ def build_proxy_app() -> web.Application:
 
 
 async def ingress_index(request: web.Request) -> web.Response:  # noqa: ARG001
-    """Minimal status page served at the ingress root.
+    """Serve the dashboard SPA from static/index.html.
 
-    Renders the current capturer state with comic styling so the user
-    has something useful to look at when they click the "Show in
-    sidebar" panel HA exposes for ingress add-ons.
-    """
+    The page is a single-file vanilla JS app that fetches
+    /api/idegis/state, /timeseries and /activity and renders charts
+    inline. No CDN dependencies."""
+    idx = STATIC_DIR / "index.html"
+    if idx.exists():
+        return web.FileResponse(idx)
+    # Fallback minimal status page if the static dir is missing.
+    return await _legacy_ingress_index(request)
+
+
+async def _legacy_ingress_index(request: web.Request) -> web.Response:  # noqa: ARG001
+    """Fallback in case the static/ directory is missing from the image."""
     now = datetime.now(timezone.utc)
     online = bool(
         state.last_seen
@@ -770,6 +941,9 @@ async def ingress_index(request: web.Request) -> web.Response:  # noqa: ARG001
     return web.Response(text=html, content_type="text/html")
 
 
+STATIC_DIR = Path(__file__).parent / "static"
+
+
 def build_api_app() -> web.Application:
     app = web.Application()
     app.router.add_get("/", ingress_index)
@@ -778,6 +952,10 @@ def build_api_app() -> web.Application:
     app.router.add_get("/api/idegis/history", api_history)
     app.router.add_get("/api/idegis/last_response", api_last_response)
     app.router.add_get("/api/idegis/analyze", api_analyze)
+    app.router.add_get("/api/idegis/timeseries", api_timeseries)
+    app.router.add_get("/api/idegis/activity", api_activity)
+    if STATIC_DIR.exists():
+        app.router.add_static("/static/", path=str(STATIC_DIR), show_index=False)
     return app
 
 

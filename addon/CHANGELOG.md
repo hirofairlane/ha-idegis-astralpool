@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.6.3 — 2026-06-16
+
+- **Real dashboard** — the ingress panel is now a single-file vanilla
+  JS app with SVG charts (no CDN, no HACS, no Chart.js). Sections:
+  - **Top tiles**: online pill, last pump start (relative + absolute),
+    filtration hours week / month, polling rate, captures count,
+    read/write split.
+  - **Vital signs**: pH / salt / temperature / chlorine production,
+    each with a line chart and **TFP reference bands shaded in the
+    background** (green = ok, amber = warn, red = bad). A period
+    selector switches between 24 h, 3 d, 7 d and 30 d windows.
+  - **Filter activity**: 30-day bar chart of pump running minutes per
+    day, with circles above each bar marking the number of starts.
+  - **Last session**: avg pH / salt / temp / production, duration and
+    close timestamp.
+  - **No more JSON link buttons** at the bottom — the dashboard
+    surfaces what the user actually needs.
+- New backend endpoints used by the dashboard:
+  - `GET /api/idegis/timeseries?hours=N&points=N` — decimated series
+    pulled from the persistent jsonl, decoded through the codec.
+  - `GET /api/idegis/activity?days=N` — per-day pump-running minutes
+    plus last start, total hours week and total hours month.
+- Static assets under `rootfs/opt/idegis/static/` served by aiohttp.
+
+## 0.6.2 — 2026-06-15
+
+- **Ingress + sidebar panel**. The add-on now exposes the panel
+  through HA ingress (`ingress: true`, `ingress_port: 8765`,
+  `panel_title: "Idegis capturer"`). The toggle "Show in sidebar"
+  becomes available in the add-on UI. The previous JSON-link landing
+  page lives as a fallback in case `static/` is missing from the
+  image.
+
 ## 0.6.1 — 2026-06-03
 
 - Reworked session boundaries. The chlorinator keeps emitting writes

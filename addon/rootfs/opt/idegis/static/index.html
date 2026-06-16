@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Idegis Capturer</title>
+  <link rel="stylesheet" href="static/style.css"/>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-mark">🌊</span>
+    <h1>IDEGIS <span class="thin">capturer</span></h1>
+  </div>
+  <div class="topbar-right">
+    <span class="online-pill" id="online-pill">— offline —</span>
+    <span class="muted" id="last-update">cargando…</span>
+  </div>
+</header>
+
+<main>
+
+  <!-- Summary tiles -->
+  <section class="tiles">
+    <div class="tile">
+      <div class="tile-label">Último encendido</div>
+      <div class="tile-value" id="last-start-rel">—</div>
+      <div class="tile-sub" id="last-start-abs">—</div>
+    </div>
+    <div class="tile">
+      <div class="tile-label">Horas filtración · 7 d</div>
+      <div class="tile-value" id="hours-week">— <span class="unit">h</span></div>
+      <div class="tile-sub" id="hours-month">— h · 30 d</div>
+    </div>
+    <div class="tile">
+      <div class="tile-label">Polling rate (5 min)</div>
+      <div class="tile-value" id="polling-rate">— <span class="unit">req/min</span></div>
+      <div class="tile-sub" id="seconds-since">—</div>
+    </div>
+    <div class="tile">
+      <div class="tile-label">Capturas</div>
+      <div class="tile-value" id="captured">—</div>
+      <div class="tile-sub" id="rw-counts">R: — · W: —</div>
+    </div>
+  </section>
+
+  <!-- Vital signs -->
+  <section class="panel">
+    <header class="panel-header">
+      <h2>Constantes vitales</h2>
+      <div class="period-pills">
+        <button class="pill active" data-hours="24">24 h</button>
+        <button class="pill" data-hours="72">3 d</button>
+        <button class="pill" data-hours="168">7 d</button>
+        <button class="pill" data-hours="720">30 d</button>
+      </div>
+    </header>
+    <div class="grid-2 charts">
+      <div class="chart-card">
+        <div class="chart-title">pH <span class="chart-band">(banda TFP 7.2 – 7.8)</span></div>
+        <div class="chart-value" id="ph-now">—</div>
+        <svg class="chart" id="chart-ph" viewBox="0 0 600 200" preserveAspectRatio="none"></svg>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">Salinidad <span class="chart-band">(low-salt 1.5 – 3.0 g/L)</span></div>
+        <div class="chart-value" id="salt-now">—</div>
+        <svg class="chart" id="chart-salt" viewBox="0 0 600 200" preserveAspectRatio="none"></svg>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">Temperatura <span class="chart-band">(óptimo 20 – 32 °C)</span></div>
+        <div class="chart-value" id="temp-now">—</div>
+        <svg class="chart" id="chart-temp" viewBox="0 0 600 200" preserveAspectRatio="none"></svg>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">Producción Cl <span class="chart-band">(saturado &gt; 95 %)</span></div>
+        <div class="chart-value" id="prod-now">—</div>
+        <svg class="chart" id="chart-prod" viewBox="0 0 600 200" preserveAspectRatio="none"></svg>
+      </div>
+    </div>
+  </section>
+
+  <!-- Filter activity -->
+  <section class="panel">
+    <header class="panel-header">
+      <h2>Actividad de la depuradora</h2>
+      <span class="muted">últimos 30 días</span>
+    </header>
+    <svg class="chart bars" id="chart-activity" viewBox="0 0 900 220" preserveAspectRatio="none"></svg>
+    <div class="legend">
+      <span class="legend-item"><span class="swatch swatch-bar"></span>Minutos activa</span>
+      <span class="legend-item"><span class="swatch swatch-marker"></span>Nº arranques</span>
+    </div>
+  </section>
+
+  <!-- Last session -->
+  <section class="panel">
+    <header class="panel-header">
+      <h2>Última sesión</h2>
+    </header>
+    <div class="kv-table" id="session-table">
+      <div class="kv"><span class="k">Estado</span><span class="v" id="ses-status">—</span></div>
+      <div class="kv"><span class="k">Duración</span><span class="v" id="ses-duration">—</span></div>
+      <div class="kv"><span class="k">Writes</span><span class="v" id="ses-writes">—</span></div>
+      <div class="kv"><span class="k">pH avg</span><span class="v" id="ses-ph">—</span></div>
+      <div class="kv"><span class="k">Sal avg</span><span class="v" id="ses-salt">—</span></div>
+      <div class="kv"><span class="k">Temp avg</span><span class="v" id="ses-temp">—</span></div>
+      <div class="kv"><span class="k">Prod avg</span><span class="v" id="ses-prod">—</span></div>
+      <div class="kv"><span class="k">Cierre</span><span class="v" id="ses-end">—</span></div>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <span>Idegis / AstralPool cloud capturer ·
+      <a href="https://www.troublefreepool.com/blog/pool-school/" target="_blank">TFP Pool School</a> ·
+      <a href="https://github.com/hirofairlane/ha-idegis-astralpool" target="_blank">repo</a>
+    </span>
+  </footer>
+
+</main>
+
+<script src="static/app.js"></script>
+</body>
+</html>

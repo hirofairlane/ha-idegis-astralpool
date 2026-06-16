@@ -1,0 +1,334 @@
+// Idegis Capturer dashboard — vanilla JS, zero deps.
+// Fetches /api/idegis/{state,timeseries,activity} every 30 s and renders
+// SVG charts with TFP reference bands. Period selector toggles the
+// time window for the vitals charts.
+
+const SVG_NS = "http://www.w3.org/2000/svg";
+let currentHours = 24;
+
+const $ = (id) => document.getElementById(id);
+
+// ---- Formatters -----------------------------------------------------
+
+const fmt = {
+  num(v, dp = 2) {
+    if (v === null || v === undefined || Number.isNaN(v)) return "—";
+    const abs = Math.abs(v);
+    if (abs >= 100) return v.toFixed(0);
+    if (abs >= 10) return v.toFixed(1);
+    return v.toFixed(dp);
+  },
+  withUnit(v, unit) {
+    if (v === null || v === undefined || Number.isNaN(v)) return "—";
+    return `${fmt.num(v)} <span class="unit">${unit}</span>`;
+  },
+  rel(isoOrNull) {
+    if (!isoOrNull) return "—";
+    const t = new Date(isoOrNull);
+    const sec = Math.max(0, (Date.now() - t.getTime()) / 1000);
+    if (sec < 60) return `hace ${Math.round(sec)} s`;
+    const min = sec / 60;
+    if (min < 60) return `hace ${Math.round(min)} min`;
+    const h = min / 60;
+    if (h < 48) return `hace ${h.toFixed(1)} h`;
+    return `hace ${(h / 24).toFixed(1)} d`;
+  },
+  abs(isoOrNull) {
+    if (!isoOrNull) return "";
+    const t = new Date(isoOrNull);
+    return t.toLocaleString("es-ES", {
+      day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit",
+    });
+  },
+};
+
+// ---- SVG helpers ----------------------------------------------------
+
+function svgEl(tag, attrs = {}, parent = null) {
+  const el = document.createElementNS(SVG_NS, tag);
+  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+  if (parent) parent.appendChild(el);
+  return el;
+}
+
+function clearSVG(svg) {
+  while (svg.firstChild) svg.removeChild(svg.firstChild);
+}
+
+// ---- Charts: line with reference bands ------------------------------
+
+function drawLineChart(svg, points, opts) {
+  clearSVG(svg);
+
+  const vb = svg.viewBox.baseVal;
+  const W = vb.width, H = vb.height;
+  const m = { left: 40, right: 12, top: 10, bottom: 22 };
+  const plotW = W - m.left - m.right;
+  const plotH = H - m.top - m.bottom;
+
+  const real = points.filter(p => p && p.v !== null && p.v !== undefined && !Number.isNaN(p.v));
+  if (real.length < 2) {
+    svgEl("text", {
+      x: W / 2, y: H / 2, "text-anchor": "middle", class: "empty",
+    }, svg).textContent = "sin datos en la ventana seleccionada";
+    return;
+  }
+
+  // Determine vertical range; honour the band so the chart shows it.
+  let yMin = Math.min(...real.map(p => p.v));
+  let yMax = Math.max(...real.map(p => p.v));
+  if (opts.bands) {
+    for (const b of opts.bands) {
+      if (b.min !== null && b.min !== undefined) yMin = Math.min(yMin, b.min);
+      if (b.max !== null && b.max !== undefined) yMax = Math.max(yMax, b.max);
+    }
+  }
+  // Pad 5%.
+  const pad = (yMax - yMin) * 0.08 || 0.5;
+  yMin -= pad; yMax += pad;
+  const yRange = yMax - yMin || 1;
+
+  // X range = time.
+  const t0 = new Date(real[0].t).getTime();
+  const t1 = new Date(real[real.length - 1].t).getTime();
+  const tRange = (t1 - t0) || 1;
+
+  // ---- Reference bands -----
+  if (opts.bands) {
+    for (const b of opts.bands) {
+      const top = b.max !== null && b.max !== undefined ? b.max : yMax;
+      const bot = b.min !== null && b.min !== undefined ? b.min : yMin;
+      const y = m.top + (1 - (top - yMin) / yRange) * plotH;
+      const h = ((top - bot) / yRange) * plotH;
+      svgEl("rect", {
+        x: m.left, y, width: plotW, height: Math.max(0, h),
+        class: b.cls || "band-ok",
+      }, svg);
+    }
+  }
+
+  // ---- Y-axis labels (4 lines) -----
+  const yTicks = 4;
+  for (let i = 0; i <= yTicks; i++) {
+    const v = yMin + (yRange * i) / yTicks;
+    const y = m.top + (1 - i / yTicks) * plotH;
+    svgEl("line", {
+      x1: m.left, y1: y, x2: W - m.right, y2: y, class: "grid-line",
+    }, svg);
+    const lbl = svgEl("text", {
+      x: m.left - 6, y: y + 3, class: "axis-label", "text-anchor": "end",
+    }, svg);
+    lbl.textContent = fmt.num(v, 1);
+  }
+
+  // ---- X-axis time labels (3 ticks) -----
+  for (let i = 0; i < 3; i++) {
+    const tx = t0 + (tRange * i) / 2;
+    const x = m.left + ((tx - t0) / tRange) * plotW;
+    const lbl = svgEl("text", {
+      x, y: H - 6, class: "axis-label", "text-anchor": i === 0 ? "start" : i === 2 ? "end" : "middle",
+    }, svg);
+    const d = new Date(tx);
+    lbl.textContent = d.toLocaleString("es-ES", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+  }
+
+  // ---- Line path -----
+  let d = "";
+  let lastX = 0, lastY = 0;
+  for (const p of real) {
+    const x = m.left + ((new Date(p.t).getTime() - t0) / tRange) * plotW;
+    const y = m.top + (1 - (p.v - yMin) / yRange) * plotH;
+    d += (d === "" ? "M" : "L") + ` ${x.toFixed(1)} ${y.toFixed(1)}`;
+    lastX = x; lastY = y;
+  }
+  svgEl("path", { d, class: "line" }, svg);
+  svgEl("circle", { cx: lastX, cy: lastY, r: 3.5, class: "last-dot" }, svg);
+}
+
+// ---- Charts: activity bars -----------------------------------------
+
+function drawActivityChart(svg, days) {
+  clearSVG(svg);
+  const vb = svg.viewBox.baseVal;
+  const W = vb.width, H = vb.height;
+  const m = { left: 36, right: 12, top: 14, bottom: 30 };
+  const plotW = W - m.left - m.right;
+  const plotH = H - m.top - m.bottom;
+
+  if (!days || days.length === 0) {
+    svgEl("text", { x: W / 2, y: H / 2, "text-anchor": "middle", class: "empty" }, svg)
+      .textContent = "sin actividad registrada";
+    return;
+  }
+
+  const maxMin = Math.max(60, ...days.map(d => d.running_minutes));
+  const barW = plotW / days.length * 0.7;
+  const gap = plotW / days.length * 0.3;
+
+  // y-axis ticks
+  const yTicks = 4;
+  for (let i = 0; i <= yTicks; i++) {
+    const v = (maxMin * i) / yTicks;
+    const y = m.top + (1 - i / yTicks) * plotH;
+    svgEl("line", { x1: m.left, y1: y, x2: W - m.right, y2: y, class: "grid-line" }, svg);
+    const lbl = svgEl("text", {
+      x: m.left - 6, y: y + 3, class: "axis-label", "text-anchor": "end",
+    }, svg);
+    lbl.textContent = `${v.toFixed(0)} min`;
+  }
+
+  // bars
+  days.forEach((d, i) => {
+    const x = m.left + i * (barW + gap) + gap / 2;
+    const h = (d.running_minutes / maxMin) * plotH;
+    const y = m.top + plotH - h;
+    svgEl("rect", { x, y, width: barW, height: h, class: "bar", rx: 2 }, svg);
+
+    // start markers — small circles above the bar.
+    if (d.start_count > 0) {
+      const cx = x + barW / 2;
+      const cy = y - 6;
+      svgEl("circle", { cx, cy, r: 3, class: "start-marker" }, svg);
+    }
+
+    // x-axis label every ~5 days
+    if (i % 5 === 0 || i === days.length - 1) {
+      const lbl = svgEl("text", {
+        x: x + barW / 2,
+        y: H - 8,
+        class: "axis-label",
+        "text-anchor": "middle",
+      }, svg);
+      const date = new Date(d.day);
+      lbl.textContent = date.toLocaleDateString("es-ES", { day: "2-digit", month: "2-digit" });
+    }
+  });
+}
+
+// ---- Refresh routines ----------------------------------------------
+
+async function refreshSummary() {
+  try {
+    const r = await fetch("api/idegis/state");
+    if (!r.ok) return;
+    const s = await r.json();
+
+    const online = !!s.online;
+    const pill = $("online-pill");
+    pill.classList.remove("is-online", "is-offline");
+    pill.classList.add(online ? "is-online" : "is-offline");
+    pill.textContent = online ? "ONLINE" : "OFFLINE";
+    $("last-update").textContent = "actualizado " + new Date().toLocaleTimeString();
+
+    $("polling-rate").innerHTML = fmt.withUnit(s.polling_rate_per_min_5m, "req/min");
+    $("captured").textContent = s.requests_total ?? "—";
+    $("rw-counts").textContent = `R: ${s.read_count ?? 0} · W: ${s.write_count ?? 0}`;
+    const ageS = s.age_seconds;
+    if (ageS !== null && ageS !== undefined) {
+      $("seconds-since").textContent = `último req hace ${ageS < 90 ? Math.round(ageS) + " s" : (ageS / 60).toFixed(1) + " min"}`;
+    } else {
+      $("seconds-since").textContent = "sin lecturas";
+    }
+
+    // Vital "now" values from the sticky measurements block.
+    const m = s.measurements || {};
+    $("ph-now").innerHTML = fmt.withUnit(m.ph?.value, m.ph?.unit || "pH");
+    $("salt-now").innerHTML = fmt.withUnit(m.salinity?.value, m.salinity?.unit || "g/L");
+    $("temp-now").innerHTML = fmt.withUnit(m.water_temperature?.value, m.water_temperature?.unit || "°C");
+    $("prod-now").innerHTML = fmt.withUnit(m.chlorine_production?.value, m.chlorine_production?.unit || "%");
+
+    // Last session
+    const ls = s.last_session_closed || s.last_session || null;
+    if (ls && ls.aggregates) {
+      const agg = ls.aggregates;
+      $("ses-status").textContent = "cerrada";
+      $("ses-duration").textContent = ls.duration_seconds
+        ? `${Math.round(ls.duration_seconds / 60)} min` : "—";
+      $("ses-writes").textContent = ls.n_writes ?? "—";
+      const get = (k) => agg[k]?.avg !== undefined ? fmt.num(agg[k].avg, 2) : "—";
+      $("ses-ph").textContent = get("SG");
+      $("ses-salt").textContent = get("IT");
+      $("ses-temp").textContent = get("CY");
+      $("ses-prod").textContent = get("GY");
+      $("ses-end").textContent = ls.end_ts ? fmt.abs(ls.end_ts) : "—";
+    } else {
+      $("ses-status").textContent = "ninguna sesión cerrada todavía";
+      ["ses-duration", "ses-writes", "ses-ph", "ses-salt", "ses-temp", "ses-prod", "ses-end"]
+        .forEach(id => $(id).textContent = "—");
+    }
+  } catch (e) { console.warn("state fetch", e); }
+}
+
+async function refreshSeries() {
+  try {
+    const r = await fetch(`api/idegis/timeseries?hours=${currentHours}&points=240`);
+    if (!r.ok) return;
+    const s = await r.json();
+    const series = s.series || {};
+    drawLineChart($("chart-ph"), series.ph || [], {
+      bands: [
+        { min: -Infinity, max: 7.2, cls: "band-bad" },
+        { min: 7.2, max: 7.8, cls: "band-ok" },
+        { min: 7.8, max: Infinity, cls: "band-bad" },
+      ],
+    });
+    drawLineChart($("chart-salt"), series.salinity || [], {
+      bands: [
+        { min: -Infinity, max: 1.5, cls: "band-warn" },
+        { min: 1.5, max: 3.0, cls: "band-ok" },
+        { min: 3.0, max: Infinity, cls: "band-warn" },
+      ],
+    });
+    drawLineChart($("chart-temp"), series.temperature || [], {
+      bands: [
+        { min: 20, max: 32, cls: "band-ok" },
+        { min: 32, max: 36, cls: "band-warn" },
+        { min: 36, max: Infinity, cls: "band-bad" },
+      ],
+    });
+    drawLineChart($("chart-prod"), series.production || [], {
+      bands: [
+        { min: 0, max: 95, cls: "band-ok" },
+        { min: 95, max: Infinity, cls: "band-warn" },
+      ],
+    });
+  } catch (e) { console.warn("series fetch", e); }
+}
+
+async function refreshActivity() {
+  try {
+    const r = await fetch("api/idegis/activity?days=30");
+    if (!r.ok) return;
+    const a = await r.json();
+    drawActivityChart($("chart-activity"), a.days || []);
+    $("last-start-rel").textContent = fmt.rel(a.last_start);
+    $("last-start-abs").textContent = fmt.abs(a.last_start);
+    $("hours-week").innerHTML = fmt.withUnit(a.total_running_hours_week, "h");
+    $("hours-month").textContent = `${fmt.num(a.total_running_hours_month, 1)} h · 30 d`;
+  } catch (e) { console.warn("activity fetch", e); }
+}
+
+async function refreshAll() {
+  await Promise.all([refreshSummary(), refreshSeries(), refreshActivity()]);
+}
+
+// ---- Period selector -----------------------------------------------
+
+function wirePeriodPills() {
+  document.querySelectorAll(".period-pills .pill").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".period-pills .pill").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      currentHours = parseInt(btn.dataset.hours, 10) || 24;
+      refreshSeries();
+    });
+  });
+}
+
+// ---- Boot ----------------------------------------------------------
+
+window.addEventListener("DOMContentLoaded", () => {
+  wirePeriodPills();
+  refreshAll();
+  setInterval(refreshAll, 30000);
+});
