@@ -5,7 +5,7 @@ description: >-
   cloud telemetry (Fluidra Multi-Tec platform). Acts as a transparent
   HTTP reverse proxy for api.idegis.net and exposes the decoded state
   on a local JSON API the companion Home Assistant integration consumes.
-version: "0.6.4"
+version: "0.6.5"
 slug: "idegis_capturer"
 init: false
 arch:
@@ -37,10 +37,12 @@ options:
   pump_nominal_flow_m3_h: 12.0
   energy_price_eur_kwh: 0.18
   cell_capacity_g_h: 24.0
-  target_production_pct: 100
-  chlorine_demand_ppm_per_day: 1.0
-  min_turnovers_per_day: 0.5
+  target_production_pct: 40
+  chlorine_demand_ppm_per_day: 0.6
+  min_turnovers_per_day: 0.75
+  apply_temp_multiplier: false
   indoor_pool: true
+  net_n_clean_installed: false
   pump_running_threshold_w: 1.0
   pump_poll_interval_s: 5
 schema:
@@ -60,7 +62,9 @@ schema:
   target_production_pct: int(1,100)
   chlorine_demand_ppm_per_day: float(0.1,10)
   min_turnovers_per_day: float(0.1,5)
+  apply_temp_multiplier: bool
   indoor_pool: bool
+  net_n_clean_installed: bool
   pump_running_threshold_w: float(0,10000)
   pump_poll_interval_s: int(1,60)
 host_network: false

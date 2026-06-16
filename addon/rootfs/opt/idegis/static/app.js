@@ -363,11 +363,38 @@ async function refreshRecommendation() {
     // came out.
     const chlWin = x.driver === "chlorine_demand";
     const tempC = x.water_temperature_c ?? "—";
+    const tempRow = x.apply_temp_multiplier
+      ? `<div class="ff-row">
+           <span>🌡️ Temp agua</span>
+           <span><b>${tempC} °C</b> → multiplicador <b>${fmt.num(x.temperature_multiplier, 2)}×</b></span>
+         </div>`
+      : `<div class="ff-row">
+           <span>🌡️ Temp agua</span>
+           <span><b>${tempC} °C</b> · multiplicador desactivado (cubierta)</span>
+         </div>`;
+    const turnEff = x.effective_turnovers_per_day ?? x.min_turnovers_per_day;
+    const turnRow = x.net_n_clean_installed
+      ? `<div class="ff-row">
+           <span class="${!chlWin ? 'winner' : 'loser'}">→ Turnover</span>
+           <span class="${!chlWin ? 'winner' : 'loser'}"><b>${x.turnover_minutes} min</b> (${fmt.num(x.pool_volume_m3, 0)}/${fmt.num(x.nominal_flow_m3_h, 1)} × 60 × ${fmt.num(turnEff, 2)} ⇐ Net'N Clean reduce el suelo)</span>
+         </div>`
+      : `<div class="ff-row">
+           <span class="${!chlWin ? 'winner' : 'loser'}">→ Turnover</span>
+           <span class="${!chlWin ? 'winner' : 'loser'}"><b>${x.turnover_minutes} min</b> (${fmt.num(x.pool_volume_m3, 0)}/${fmt.num(x.nominal_flow_m3_h, 1)} × 60 × ${x.min_turnovers_per_day})</span>
+         </div>`;
+    const eduRow = x.net_n_clean_installed
+      ? `<div class="ff-note">
+           ℹ️ El suelo de renovación cubre el ciclado de la célula UV (cloraminas).
+           Con Net'N Clean activo no hace falta margen extra para zonas muertas.
+         </div>`
+      : `<div class="ff-note">
+           ℹ️ El suelo de renovación cubre dos cosas: ciclar el agua por la
+           célula UV (destruye cloraminas) y evitar zonas muertas. Si tienes
+           un sistema de barrido tipo Net'N Clean, actívalo en config para
+           bajar este suelo.
+         </div>`;
     $("reco-formula").innerHTML = `
-      <div class="ff-row">
-        <span>🌡️ Temp agua</span>
-        <span><b>${tempC} °C</b> → multiplicador <b>${fmt.num(x.temperature_multiplier, 2)}×</b></span>
-      </div>
+      ${tempRow}
       <div class="ff-row">
         <span>💧 Demanda Cl/día</span>
         <span><b>${fmt.num(x.chlorine_demand_ppm_per_day, 1)} ppm × ${fmt.num(x.pool_volume_m3, 0)} m³ = ${fmt.num(x.daily_chlorine_demand_g, 1)} g</b></span>
@@ -378,16 +405,14 @@ async function refreshRecommendation() {
       </div>
       <div class="ff-row">
         <span class="${chlWin ? 'winner' : 'loser'}">→ Cloro</span>
-        <span class="${chlWin ? 'winner' : 'loser'}"><b>${x.chlorine_demand_minutes} min</b> (demanda × temp / output)</span>
+        <span class="${chlWin ? 'winner' : 'loser'}"><b>${x.chlorine_demand_minutes} min</b> (demanda / output${x.apply_temp_multiplier ? ' × temp' : ''})</span>
       </div>
-      <div class="ff-row">
-        <span class="${!chlWin ? 'winner' : 'loser'}">→ Turnover</span>
-        <span class="${!chlWin ? 'winner' : 'loser'}"><b>${x.turnover_minutes} min</b> (${fmt.num(x.pool_volume_m3, 0)}/${fmt.num(x.nominal_flow_m3_h, 1)} × 60 × ${x.min_turnovers_per_day})</span>
-      </div>
+      ${turnRow}
       <div class="ff-row">
         <span>= Recomendado</span>
         <span><b>max(${x.chlorine_demand_minutes}, ${x.turnover_minutes}) = ${x.recommended_minutes_today} min/día</b></span>
       </div>
+      ${eduRow}
     `;
 
     function paintBar(barId, pct) {

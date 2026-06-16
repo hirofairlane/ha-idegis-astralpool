@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.6.5 — 2026-06-17
+
+- **Filtration recommendation tuned for indoor + UV pools.** New
+  defaults that better fit a covered pool with a Neo2-24 UV chlorinator:
+  - `target_production_pct: 40` — running longer at low % is gentler
+    on the electrode than short pulses at 100 %.
+  - `chlorine_demand_ppm_per_day: 0.6` — realistic for indoor water
+    with no sun-driven UV decay.
+  - `min_turnovers_per_day: 0.75` — covers UV-cell cycling for
+    cloramines.
+  - `apply_temp_multiplier: false` — kinetics multiplier is off by
+    default for covered pools (no sun, no evaporation).
+- **Net'N Clean awareness.** New `net_n_clean_installed` option:
+  when the pool has an AstralPool Net'N Clean (or equivalent
+  secondary booster pump driving in-floor returns), dead-zone
+  prevention is mechanical, so the turnover floor is reduced to
+  `min_turnovers × 0.6`. The remaining floor is justified solely
+  by UV-cell cycling.
+- The formula breakdown in the dashboard now explains which
+  constraints are active (temp multiplier on/off, Net'N Clean
+  on/off) so the recommendation is auditable end-to-end.
+
 ## 0.6.4 — 2026-06-16
 
 - **Theme aligned with `ha-energy-optimizer`** — dark slate background

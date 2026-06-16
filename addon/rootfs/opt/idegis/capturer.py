@@ -52,10 +52,12 @@ DEFAULTS = {
     "pump_nominal_flow_m3_h": 12.0,
     "energy_price_eur_kwh": 0.18,
     "cell_capacity_g_h": 24.0,
-    "target_production_pct": 100,
-    "chlorine_demand_ppm_per_day": 1.0,
-    "min_turnovers_per_day": 0.5,
+    "target_production_pct": 40,
+    "chlorine_demand_ppm_per_day": 0.6,
+    "min_turnovers_per_day": 0.75,
+    "apply_temp_multiplier": False,
     "indoor_pool": True,
+    "net_n_clean_installed": False,
     "pump_running_threshold_w": 1.0,
     "pump_poll_interval_s": 5,
 }
@@ -85,10 +87,23 @@ POOL_VOLUME_M3 = float(OPTS.get("pool_volume_m3") or 37.0)
 PUMP_NOMINAL_FLOW_M3_H = float(OPTS.get("pump_nominal_flow_m3_h") or 12.0)
 ENERGY_PRICE_EUR_KWH = float(OPTS.get("energy_price_eur_kwh") or 0.18)
 CELL_CAPACITY_G_H = float(OPTS.get("cell_capacity_g_h") or 24.0)
-TARGET_PRODUCTION_PCT = int(OPTS.get("target_production_pct") or 100)
-CHLORINE_DEMAND_PPM_PER_DAY = float(OPTS.get("chlorine_demand_ppm_per_day") or 1.0)
-MIN_TURNOVERS_PER_DAY = float(OPTS.get("min_turnovers_per_day") or 0.5)
+TARGET_PRODUCTION_PCT = int(OPTS.get("target_production_pct") or 40)
+CHLORINE_DEMAND_PPM_PER_DAY = float(OPTS.get("chlorine_demand_ppm_per_day") or 0.6)
+MIN_TURNOVERS_PER_DAY = float(OPTS.get("min_turnovers_per_day") or 0.75)
+APPLY_TEMP_MULTIPLIER = bool(
+    OPTS.get("apply_temp_multiplier") if OPTS.get("apply_temp_multiplier") is not None else False
+)
 INDOOR_POOL = bool(OPTS.get("indoor_pool") if OPTS.get("indoor_pool") is not None else True)
+NET_N_CLEAN_INSTALLED = bool(
+    OPTS.get("net_n_clean_installed") if OPTS.get("net_n_clean_installed") is not None else False
+)
+# AstralPool Net'N Clean (and equivalent active bottom-suction systems) use a
+# secondary booster pump (1.5 CV in the standard kit) to push water through
+# in-floor pop-up returns. That mechanically eliminates dead zones, so the
+# "turnover" minimum no longer needs to cover hydraulic mixing — only the UV
+# cell cycling. We scale the user's `min_turnovers_per_day` by this factor
+# when the option is enabled.
+NET_N_CLEAN_TURNOVER_FACTOR = 0.6
 PUMP_THRESHOLD_W = float(OPTS.get("pump_running_threshold_w") or 100.0)
 PUMP_POLL_S = int(OPTS.get("pump_poll_interval_s") or 5)
 
@@ -843,6 +858,8 @@ def _compute_recommendation(
     chlorine_demand_ppm_day: float,
     min_turnovers_per_day: float,
     temp_c: float | None,
+    apply_temp_multiplier: bool = False,
+    net_n_clean_installed: bool = False,
 ) -> dict:
     """Combine chlorine-demand and filter-turnover constraints.
 
@@ -867,10 +884,13 @@ def _compute_recommendation(
     """
     cl_per_min = cell_g_h * (target_pct / 100) / 60.0
     daily_demand_g = chlorine_demand_ppm_day * volume_m3
-    temp_mult = _temp_multiplier(temp_c)
+    temp_mult = _temp_multiplier(temp_c) if apply_temp_multiplier else 1.0
     chl_minutes = (daily_demand_g / cl_per_min) * temp_mult if cl_per_min > 0 else 0
+    effective_turnovers = min_turnovers_per_day * (
+        NET_N_CLEAN_TURNOVER_FACTOR if net_n_clean_installed else 1.0
+    )
     turnover_minutes = (
-        (volume_m3 / flow_m3_h) * 60 * min_turnovers_per_day if flow_m3_h > 0 else 0
+        (volume_m3 / flow_m3_h) * 60 * effective_turnovers if flow_m3_h > 0 else 0
     )
     rec = max(chl_minutes, turnover_minutes)
     driver = "chlorine_demand" if chl_minutes >= turnover_minutes else "turnover"
@@ -880,6 +900,9 @@ def _compute_recommendation(
         "chlorine_demand_minutes": round(chl_minutes),
         "turnover_minutes": round(turnover_minutes),
         "temperature_multiplier": temp_mult,
+        "temperature_multiplier_applied": apply_temp_multiplier,
+        "net_n_clean_installed": net_n_clean_installed,
+        "effective_turnovers_per_day": round(effective_turnovers, 3),
         "daily_chlorine_demand_g": round(daily_demand_g, 1),
         "cell_output_g_per_min": round(cl_per_min, 3),
     }
@@ -910,6 +933,8 @@ async def api_recommendation(request: web.Request) -> web.Response:  # noqa: ARG
         chlorine_demand_ppm_day=CHLORINE_DEMAND_PPM_PER_DAY,
         min_turnovers_per_day=MIN_TURNOVERS_PER_DAY,
         temp_c=temp_c,
+        apply_temp_multiplier=APPLY_TEMP_MULTIPLIER,
+        net_n_clean_installed=NET_N_CLEAN_INSTALLED,
     )
     rec_min_today = calc["recommended_minutes_today"]
     rec_min_week = rec_min_today * 7
@@ -951,7 +976,10 @@ async def api_recommendation(request: web.Request) -> web.Response:  # noqa: ARG
         "chlorine_demand_ppm_per_day": CHLORINE_DEMAND_PPM_PER_DAY,
         "min_turnovers_per_day": MIN_TURNOVERS_PER_DAY,
         "indoor_pool": INDOOR_POOL,
+        "net_n_clean_installed": NET_N_CLEAN_INSTALLED,
+        "effective_turnovers_per_day": calc["effective_turnovers_per_day"],
         "water_temperature_c": temp_c,
+        "apply_temp_multiplier": APPLY_TEMP_MULTIPLIER,
         "temperature_multiplier": calc["temperature_multiplier"],
         "daily_chlorine_demand_g": calc["daily_chlorine_demand_g"],
         "cell_output_g_per_min": calc["cell_output_g_per_min"],
