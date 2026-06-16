@@ -234,8 +234,8 @@ async function refreshSummary() {
     const m = s.measurements || {};
     $("ph-now").innerHTML = fmt.withUnit(m.ph?.value, m.ph?.unit || "pH");
     $("salt-now").innerHTML = fmt.withUnit(m.salinity?.value, m.salinity?.unit || "g/L");
-    $("temp-now").innerHTML = fmt.withUnit(m.water_temperature?.value, m.water_temperature?.unit || "°C");
-    $("prod-now").innerHTML = fmt.withUnit(m.chlorine_production?.value, m.chlorine_production?.unit || "%");
+    $("temp-now").innerHTML = fmt.withUnit(m.temperature?.value, m.temperature?.unit || "°C");
+    $("prod-now").innerHTML = fmt.withUnit(m.production_percent?.value, m.production_percent?.unit || "%");
 
     // Last session
     const ls = s.last_session_closed || s.last_session || null;

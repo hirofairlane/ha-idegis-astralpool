@@ -588,6 +588,9 @@ async def api_timeseries(request: web.Request) -> web.Response:
     points = max(10, min(points, 2000))
 
     records = _read_jsonl_window(hours)
+    # Order the records chronologically — _read_jsonl_window streams the
+    # file in append order but a defensive sort costs nothing.
+    records.sort(key=lambda r: r.get("ts", ""))
 
     raw: dict[str, list[dict]] = {
         "ph": [],
@@ -596,24 +599,46 @@ async def api_timeseries(request: web.Request) -> web.Response:
         "production": [],
     }
     metric_map = {
+        # codec key -> dashboard series key
         "ph": "ph",
         "salinity": "salinity",
-        "water_temperature": "temperature",
-        "chlorine_production": "production",
+        "temperature": "temperature",
+        "production_percent": "production",
     }
+    # Sticky decoding: not every write carries every field (the
+    # chlorinator rotates which Bn fields go in each request). Carry
+    # the last known value forward and emit a new point only when the
+    # value actually changes — that gives us continuous series for
+    # every metric without bloating the JSON.
+    sticky_fields_local: dict[str, str] = {}
+    last_emitted: dict[str, float | None] = {dst: None for dst in metric_map.values()}
 
     for rec in records:
         if rec.get("endpoint") != "write":
             continue
         fields = rec.get("fields") or {}
-        ms = summarise_measurements(decode_fields(fields))
+        if not fields:
+            continue
+        # Merge incoming fields into the local sticky state.
+        for k, v in fields.items():
+            if k.startswith("__"):
+                continue
+            sticky_fields_local[k] = v
+        ms = summarise_measurements(decode_fields(sticky_fields_local))
         if not ms:
             continue
         ts = rec["ts"]
         for src, dst in metric_map.items():
             m = ms.get(src)
-            if isinstance(m, dict) and m.get("value") is not None:
-                raw[dst].append({"t": ts, "v": m["value"]})
+            if not isinstance(m, dict):
+                continue
+            val = m.get("value")
+            if val is None:
+                continue
+            # Only emit when the value actually moves (or first point).
+            if last_emitted[dst] is None or abs(val - last_emitted[dst]) > 1e-9:
+                raw[dst].append({"t": ts, "v": val})
+                last_emitted[dst] = val
 
     result = {k: _decimate(v, points) for k, v in raw.items()}
     return web.json_response({
@@ -812,7 +837,7 @@ async def api_recommendation(request: web.Request) -> web.Response:  # noqa: ARG
     """
     # Pull the temperature from the sticky decoded measurements.
     ms = summarise_measurements(decode_fields(state.sticky_fields)) or {}
-    temp_c = (ms.get("water_temperature") or {}).get("value")
+    temp_c = (ms.get("temperature") or {}).get("value")
 
     base_min_per_day = (POOL_VOLUME_M3 / PUMP_NOMINAL_FLOW_M3_H) * 60
     mult = _temp_multiplier(temp_c)
@@ -1204,7 +1229,7 @@ async def _legacy_ingress_index(request: web.Request) -> web.Response:  # noqa: 
         ),
         _row("pH (live)", _live("ph")),
         _row("Salinity (live)", _live("salinity")),
-        _row("Water temperature (live)", _live("water_temperature")),
+        _row("Water temperature (live)", _live("temperature")),
         _row("Last session pH avg", _agg("SG")),
         _row("Last session salt avg", _agg("IT")),
         _row("Last session duration (s)", last_session_snapshot.get("duration_seconds")),
