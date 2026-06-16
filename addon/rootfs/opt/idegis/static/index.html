@@ -93,6 +93,66 @@
     </div>
   </section>
 
+  <!-- Pumps energy -->
+  <section class="panel">
+    <header class="panel-header">
+      <h2>Consumo eléctrico de bombas</h2>
+      <span class="muted" id="energy-price">— €/kWh</span>
+    </header>
+    <div class="pump-grid">
+      <div class="pump-card">
+        <h3>Depuradora <span class="pump-state idle" id="pump-state">—</span></h3>
+        <div class="pump-row">
+          <div class="pump-cell"><div class="pcl">Ahora</div><div class="pcv" id="pump-now-w">— W</div></div>
+          <div class="pump-cell"><div class="pcl">Motor 24 h</div><div class="pcv amber" id="pump-motor-24h">— h</div></div>
+          <div class="pump-cell"><div class="pcl">Motor 7 d</div><div class="pcv amber" id="pump-motor-7d">— h</div></div>
+        </div>
+        <div class="pump-row">
+          <div class="pump-cell"><div class="pcl">kWh 24 h</div><div class="pcv green" id="pump-kwh-24h">—</div></div>
+          <div class="pump-cell"><div class="pcl">kWh 7 d</div><div class="pcv green" id="pump-kwh-7d">—</div></div>
+          <div class="pump-cell"><div class="pcl">€ 30 d</div><div class="pcv green" id="pump-eur-30d">—</div></div>
+        </div>
+      </div>
+      <div class="pump-card">
+        <h3>Limpiafondos <span class="pump-state idle" id="cleaner-state">—</span></h3>
+        <div class="pump-row">
+          <div class="pump-cell"><div class="pcl">Ahora</div><div class="pcv" id="cleaner-now-w">— W</div></div>
+          <div class="pump-cell"><div class="pcl">Motor 24 h</div><div class="pcv amber" id="cleaner-motor-24h">— h</div></div>
+          <div class="pump-cell"><div class="pcl">Motor 7 d</div><div class="pcv amber" id="cleaner-motor-7d">— h</div></div>
+        </div>
+        <div class="pump-row">
+          <div class="pump-cell"><div class="pcl">kWh 24 h</div><div class="pcv green" id="cleaner-kwh-24h">—</div></div>
+          <div class="pump-cell"><div class="pcl">kWh 7 d</div><div class="pcv green" id="cleaner-kwh-7d">—</div></div>
+          <div class="pump-cell"><div class="pcl">€ 30 d</div><div class="pcv green" id="cleaner-eur-30d">—</div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Recommendation -->
+  <section class="panel">
+    <header class="panel-header">
+      <h2>Recomendación de filtración</h2>
+      <span class="muted" id="reco-meta">— L · — m³/h</span>
+    </header>
+    <div class="reco">
+      <div class="reco-side">
+        <div class="rl">Hoy</div>
+        <div class="rv" id="reco-today">— min</div>
+        <div class="rs"><span id="reco-real-today">—</span> reales · <span id="reco-cov-today">—</span> cubierto</div>
+        <div class="reco-bar"><div class="reco-bar-fill" id="reco-bar-today"></div></div>
+        <div class="reco-meta">Recomendado según temperatura del agua actual.</div>
+      </div>
+      <div class="reco-side">
+        <div class="rl">Semana</div>
+        <div class="rv" id="reco-week">— min</div>
+        <div class="rs"><span id="reco-real-week">—</span> reales · <span id="reco-cov-week">—</span> cubierto</div>
+        <div class="reco-bar"><div class="reco-bar-fill" id="reco-bar-week"></div></div>
+        <div class="reco-meta">7 turnovers a 1×/día con caudal nominal.</div>
+      </div>
+    </div>
+  </section>
+
   <!-- Last session -->
   <section class="panel">
     <header class="panel-header">

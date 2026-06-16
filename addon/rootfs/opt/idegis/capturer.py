@@ -45,6 +45,12 @@ DEFAULTS = {
     "max_history": 1000,
     "online_timeout_s": 90,
     "pump_power_entity": "sensor.shellypro4pm_30c6f7836a6c_power_3",
+    "cleaner_power_entity": "sensor.shellypro4pm_30c6f7836a6c_power_1",
+    "pump_switch_entity": "switch.depuradora",
+    "cleaner_switch_entity": "switch.limpiafondos",
+    "pool_volume_m3": 37.0,
+    "pump_nominal_flow_m3_h": 12.0,
+    "energy_price_eur_kwh": 0.18,
     "pump_running_threshold_w": 1.0,
     "pump_poll_interval_s": 5,
 }
@@ -67,6 +73,12 @@ UPSTREAM_HOST_HEADER = OPTS["upstream_host_header"]
 MAX_HISTORY = int(OPTS["max_history"])
 ONLINE_TIMEOUT_S = int(OPTS["online_timeout_s"])
 PUMP_ENTITY = OPTS.get("pump_power_entity") or ""
+CLEANER_ENTITY = OPTS.get("cleaner_power_entity") or ""
+PUMP_SWITCH_ENTITY = OPTS.get("pump_switch_entity") or ""
+CLEANER_SWITCH_ENTITY = OPTS.get("cleaner_switch_entity") or ""
+POOL_VOLUME_M3 = float(OPTS.get("pool_volume_m3") or 37.0)
+PUMP_NOMINAL_FLOW_M3_H = float(OPTS.get("pump_nominal_flow_m3_h") or 12.0)
+ENERGY_PRICE_EUR_KWH = float(OPTS.get("energy_price_eur_kwh") or 0.18)
 PUMP_THRESHOLD_W = float(OPTS.get("pump_running_threshold_w") or 100.0)
 PUMP_POLL_S = int(OPTS.get("pump_poll_interval_s") or 5)
 
@@ -611,6 +623,245 @@ async def api_timeseries(request: web.Request) -> web.Response:
     })
 
 
+async def _ha_state(entity_id: str) -> dict | None:
+    """Read a single HA state via the Supervisor-proxied Core API."""
+    if not entity_id or not SUPERVISOR_TOKEN:
+        return None
+    try:
+        async with ClientSession() as s:
+            async with s.get(
+                f"{HASS_API}/states/{entity_id}",
+                headers={"Authorization": f"Bearer {SUPERVISOR_TOKEN}"},
+                timeout=ClientTimeout(total=5),
+            ) as resp:
+                if resp.status == 200:
+                    return await resp.json()
+    except Exception as exc:  # noqa: BLE001
+        log.debug("HA state(%s) failed: %s", entity_id, exc)
+    return None
+
+
+async def _ha_history(
+    entity_id: str,
+    start: datetime,
+    end: datetime | None = None,
+) -> list[dict]:
+    """Read state changes for an entity within [start, end] from HA history."""
+    if not entity_id or not SUPERVISOR_TOKEN:
+        return []
+    start_iso = start.isoformat()
+    url = f"{HASS_API}/history/period/{start_iso}"
+    params = {
+        "filter_entity_id": entity_id,
+        "minimal_response": "true",
+    }
+    if end is not None:
+        params["end_time"] = end.isoformat()
+    try:
+        async with ClientSession() as s:
+            async with s.get(
+                url,
+                headers={"Authorization": f"Bearer {SUPERVISOR_TOKEN}"},
+                params=params,
+                timeout=ClientTimeout(total=8),
+            ) as resp:
+                if resp.status != 200:
+                    return []
+                data = await resp.json()
+                return data[0] if data else []
+    except Exception as exc:  # noqa: BLE001
+        log.debug("HA history(%s) failed: %s", entity_id, exc)
+        return []
+
+
+def _kwh_from_history(
+    history: list[dict],
+    floor_w: float = 5.0,
+    cap_seconds: float = 600.0,
+) -> tuple[float, float]:
+    """Integrate kWh from a list of HA state changes (power, W).
+
+    Returns (kwh_total, motor_running_seconds): the second value sums
+    only intervals where power was above `floor_w` so the user can
+    distinguish real motor activity from contactor coil draw.
+    Intervals longer than `cap_seconds` are clipped (HA may have been
+    down or the entity unavailable).
+    """
+    if not history:
+        return 0.0, 0.0
+    kwh = 0.0
+    motor_s = 0.0
+    prev_ts: datetime | None = None
+    prev_w: float | None = None
+    for rec in history:
+        ts_str = rec.get("last_changed") or rec.get("last_updated")
+        if not ts_str:
+            continue
+        try:
+            ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+        except Exception:  # noqa: BLE001
+            continue
+        try:
+            w = float(rec.get("state", "0"))
+        except (TypeError, ValueError):
+            w = None
+        if prev_ts is not None and prev_w is not None:
+            dt = min((ts - prev_ts).total_seconds(), cap_seconds)
+            if dt > 0:
+                kwh += prev_w * dt / 3600 / 1000
+                if prev_w > floor_w:
+                    motor_s += dt
+        prev_ts = ts
+        prev_w = w
+    return round(kwh, 3), round(motor_s, 1)
+
+
+async def api_pumps(request: web.Request) -> web.Response:  # noqa: ARG001
+    """Live + 24h/7d/30d energy use of the two pump channels.
+
+    Returns:
+      {
+        "pump":    {now_w, switch, kwh_24h, kwh_7d, kwh_30d,
+                    motor_hours_24h, motor_hours_7d, eur_30d},
+        "cleaner": { ... same shape ... },
+        "price_eur_kwh": float,
+      }
+    """
+    now = datetime.now(timezone.utc)
+
+    async def _channel(power_ent: str, switch_ent: str) -> dict:
+        out: dict = {
+            "power_entity": power_ent,
+            "switch_entity": switch_ent,
+            "now_w": None,
+            "switch": None,
+            "kwh_24h": 0.0,
+            "kwh_7d": 0.0,
+            "kwh_30d": 0.0,
+            "motor_hours_24h": 0.0,
+            "motor_hours_7d": 0.0,
+            "eur_30d": 0.0,
+        }
+        if not power_ent:
+            return out
+        state_now = await _ha_state(power_ent)
+        if state_now:
+            try:
+                out["now_w"] = float(state_now.get("state", "0"))
+            except (TypeError, ValueError):
+                out["now_w"] = None
+        sw_state = await _ha_state(switch_ent) if switch_ent else None
+        if sw_state:
+            out["switch"] = sw_state.get("state")
+        # 30 days of history (enough for the longest aggregate); slice it.
+        hist30 = await _ha_history(power_ent, now - timedelta(days=30), now)
+        kwh30, motor30 = _kwh_from_history(hist30)
+        # Sub-window: filter records inside 7d / 24h
+        cutoff_7d = (now - timedelta(days=7)).isoformat()
+        cutoff_24h = (now - timedelta(hours=24)).isoformat()
+        hist7 = [r for r in hist30 if (r.get("last_changed") or "") >= cutoff_7d]
+        hist24 = [r for r in hist30 if (r.get("last_changed") or "") >= cutoff_24h]
+        kwh7, motor7 = _kwh_from_history(hist7)
+        kwh24, motor24 = _kwh_from_history(hist24)
+        out["kwh_30d"] = round(kwh30, 3)
+        out["kwh_7d"] = round(kwh7, 3)
+        out["kwh_24h"] = round(kwh24, 3)
+        out["motor_hours_7d"] = round(motor7 / 3600, 2)
+        out["motor_hours_24h"] = round(motor24 / 3600, 2)
+        out["eur_30d"] = round(kwh30 * ENERGY_PRICE_EUR_KWH, 2)
+        return out
+
+    pump = await _channel(PUMP_ENTITY, PUMP_SWITCH_ENTITY)
+    cleaner = await _channel(CLEANER_ENTITY, CLEANER_SWITCH_ENTITY)
+
+    return web.json_response({
+        "pump": pump,
+        "cleaner": cleaner,
+        "price_eur_kwh": ENERGY_PRICE_EUR_KWH,
+    })
+
+
+def _temp_multiplier(temp_c: float | None) -> float:
+    """Pool turnover demand scales with water temperature.
+
+    Below 20 °C the filter can do less; above 32 °C the algae/Cl demand
+    rises and we want more turns per day. Indoor pool typical (the
+    reference install).
+    """
+    if temp_c is None:
+        return 1.0
+    if temp_c < 20:
+        return 0.6
+    if temp_c < 24:
+        return 0.8
+    if temp_c < 28:
+        return 1.0
+    if temp_c < 32:
+        return 1.2
+    if temp_c < 36:
+        return 1.4
+    return 1.6
+
+
+async def api_recommendation(request: web.Request) -> web.Response:  # noqa: ARG001
+    """Recommend a daily and weekly filtration time.
+
+    Base formula: 1 turnover/day * (volume_m3 / flow_m3_h) * 60 minutes.
+    Adjusted by current water temperature. Compares against actual
+    runtime taken from /api/idegis/activity for the last 7 days.
+    """
+    # Pull the temperature from the sticky decoded measurements.
+    ms = summarise_measurements(decode_fields(state.sticky_fields)) or {}
+    temp_c = (ms.get("water_temperature") or {}).get("value")
+
+    base_min_per_day = (POOL_VOLUME_M3 / PUMP_NOMINAL_FLOW_M3_H) * 60
+    mult = _temp_multiplier(temp_c)
+    rec_min_today = round(base_min_per_day * mult)
+    rec_min_week = rec_min_today * 7
+
+    # Actual runtime from the activity log (uses pump_running edges).
+    now = datetime.now(timezone.utc)
+    records = _read_jsonl_window(hours=7 * 24)
+    by_day: dict[str, float] = {}
+    prev_running = False
+    prev_ts: datetime | None = None
+    for rec in records:
+        try:
+            ts = datetime.fromisoformat(rec["ts"])
+        except Exception:  # noqa: BLE001
+            continue
+        if rec.get("pump_running") and prev_running and prev_ts is not None:
+            delta = (ts - prev_ts).total_seconds() / 60
+            if 0 < delta <= 15:
+                day_key = prev_ts.astimezone().date().isoformat()
+                by_day[day_key] = by_day.get(day_key, 0) + delta
+        prev_running = bool(rec.get("pump_running"))
+        prev_ts = ts
+    today_key = now.astimezone().date().isoformat()
+    real_min_today = round(by_day.get(today_key, 0))
+    real_min_week = round(sum(by_day.values()))
+
+    coverage_today = (
+        round(real_min_today / rec_min_today * 100) if rec_min_today else 0
+    )
+    coverage_week = (
+        round(real_min_week / rec_min_week * 100) if rec_min_week else 0
+    )
+
+    return web.json_response({
+        "pool_volume_m3": POOL_VOLUME_M3,
+        "nominal_flow_m3_h": PUMP_NOMINAL_FLOW_M3_H,
+        "water_temperature_c": temp_c,
+        "temperature_multiplier": mult,
+        "recommended_minutes_today": rec_min_today,
+        "recommended_minutes_week": rec_min_week,
+        "real_minutes_today": real_min_today,
+        "real_minutes_week": real_min_week,
+        "coverage_today_pct": coverage_today,
+        "coverage_week_pct": coverage_week,
+    })
+
+
 async def api_activity(request: web.Request) -> web.Response:
     """Pump-running activity aggregated per day over the last N days.
 
@@ -954,6 +1205,8 @@ def build_api_app() -> web.Application:
     app.router.add_get("/api/idegis/analyze", api_analyze)
     app.router.add_get("/api/idegis/timeseries", api_timeseries)
     app.router.add_get("/api/idegis/activity", api_activity)
+    app.router.add_get("/api/idegis/pumps", api_pumps)
+    app.router.add_get("/api/idegis/recommendation", api_recommendation)
     if STATIC_DIR.exists():
         app.router.add_static("/static/", path=str(STATIC_DIR), show_index=False)
     return app

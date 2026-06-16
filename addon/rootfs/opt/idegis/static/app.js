@@ -308,8 +308,73 @@ async function refreshActivity() {
   } catch (e) { console.warn("activity fetch", e); }
 }
 
+async function refreshPumps() {
+  try {
+    const r = await fetch("api/idegis/pumps");
+    if (!r.ok) return;
+    const p = await r.json();
+    const price = p.price_eur_kwh;
+    $("energy-price").textContent = `${fmt.num(price, 2)} €/kWh`;
+
+    function fill(prefix, ch) {
+      $(`${prefix}-now-w`).innerHTML = fmt.withUnit(ch.now_w, "W");
+      $(`${prefix}-motor-24h`).innerHTML = fmt.withUnit(ch.motor_hours_24h, "h");
+      $(`${prefix}-motor-7d`).innerHTML = fmt.withUnit(ch.motor_hours_7d, "h");
+      $(`${prefix}-kwh-24h`).textContent = fmt.num(ch.kwh_24h, 2);
+      $(`${prefix}-kwh-7d`).textContent = fmt.num(ch.kwh_7d, 2);
+      $(`${prefix}-eur-30d`).textContent = `${fmt.num(ch.eur_30d, 2)} €`;
+      const stateEl = $(`${prefix}-state`);
+      if (ch.switch === "on") {
+        stateEl.textContent = "EN MARCHA";
+        stateEl.className = "pump-state running";
+      } else if (ch.switch === "off") {
+        stateEl.textContent = "PARADA";
+        stateEl.className = "pump-state idle";
+      } else {
+        stateEl.textContent = "—";
+        stateEl.className = "pump-state idle";
+      }
+    }
+    fill("pump", p.pump || {});
+    fill("cleaner", p.cleaner || {});
+  } catch (e) { console.warn("pumps fetch", e); }
+}
+
+async function refreshRecommendation() {
+  try {
+    const r = await fetch("api/idegis/recommendation");
+    if (!r.ok) return;
+    const x = await r.json();
+    $("reco-meta").textContent =
+      `${fmt.num(x.pool_volume_m3 * 1000, 0)} L · ${fmt.num(x.nominal_flow_m3_h, 1)} m³/h`;
+    $("reco-today").innerHTML = fmt.withUnit(x.recommended_minutes_today, "min");
+    $("reco-week").innerHTML = fmt.withUnit(x.recommended_minutes_week, "min");
+    $("reco-real-today").textContent = `${fmt.num(x.real_minutes_today, 0)} min`;
+    $("reco-real-week").textContent = `${fmt.num(x.real_minutes_week, 0)} min`;
+    $("reco-cov-today").textContent = `${fmt.num(x.coverage_today_pct, 0)} %`;
+    $("reco-cov-week").textContent = `${fmt.num(x.coverage_week_pct, 0)} %`;
+
+    function paintBar(barId, pct) {
+      const bar = $(barId);
+      const p = Math.min(150, Math.max(0, pct));
+      bar.style.width = Math.min(100, p) + "%";
+      bar.classList.remove("over", "under");
+      if (pct >= 95 && pct <= 120) bar.classList.add("over");
+      else if (pct < 50) bar.classList.add("under");
+    }
+    paintBar("reco-bar-today", x.coverage_today_pct);
+    paintBar("reco-bar-week", x.coverage_week_pct);
+  } catch (e) { console.warn("reco fetch", e); }
+}
+
 async function refreshAll() {
-  await Promise.all([refreshSummary(), refreshSeries(), refreshActivity()]);
+  await Promise.all([
+    refreshSummary(),
+    refreshSeries(),
+    refreshActivity(),
+    refreshPumps(),
+    refreshRecommendation(),
+  ]);
 }
 
 // ---- Period selector -----------------------------------------------

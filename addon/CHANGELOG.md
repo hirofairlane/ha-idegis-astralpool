@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.6.4 — 2026-06-16
+
+- **Theme aligned with `ha-energy-optimizer`** — dark slate background
+  (`#0f172a`), amber/sky/green accents, system-ui sans-serif, chunky
+  3 px black outlines with solid drop-shadows. Visual coherence with
+  the other home apps so the user gets the same comic vibe across
+  the homelab.
+- **Pumps energy panel** — live W draw plus kWh accumulated 24 h /
+  7 d / 30 d for both the filter pump (Shelly Pro 4PM ch 3) and the
+  cleaner (ch 1). Motor running hours computed by integrating only
+  intervals above 5 W (filters out the contactor coil's 1.5 W
+  baseline). Cost in € over 30 days at the configurable price.
+- **Filtration recommendation panel** — recommends daily and weekly
+  filtration minutes from the configured pool volume + nominal flow
+  + the current water temperature (temperature-multiplier from a
+  TFP-inspired curve). Compares against actual runtime taken from
+  the persistent jsonl and renders coverage bars (under = amber,
+  on-target = green).
+- New backend endpoints:
+  - `GET /api/idegis/pumps` — calls HA history for the two Shelly
+    channels via the Supervisor-proxied Core API.
+  - `GET /api/idegis/recommendation` — pure derivation, no I/O
+    besides the in-memory state.
+- New configurable options:
+  - `cleaner_power_entity`, `pump_switch_entity`,
+    `cleaner_switch_entity` (Shelly + HA switches).
+  - `pool_volume_m3` (default 37), `pump_nominal_flow_m3_h` (12),
+    `energy_price_eur_kwh` (0.18).
+
 ## 0.6.3 — 2026-06-16
 
 - **Real dashboard** — the ingress panel is now a single-file vanilla

@@ -19,4 +19,4 @@ LABEL \
     io.hass.name="Idegis / AstralPool cloud capturer" \
     io.hass.description="Local capture & decode of Idegis pool chlorinator cloud telemetry" \
     io.hass.type="addon" \
-    io.hass.version="0.6.3"
+    io.hass.version="0.6.4"
