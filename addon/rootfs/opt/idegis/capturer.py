@@ -865,12 +865,13 @@ async def api_recommendation(request: web.Request) -> web.Response:  # noqa: ARG
 async def api_activity(request: web.Request) -> web.Response:
     """Pump-running activity aggregated per day over the last N days.
 
-    Response: {
-      days: [{day, running_minutes, start_count}, ...],
-      last_start: ISO timestamp or null,
-      total_running_hours_week: float,
-      total_running_hours_month: float,
-    }
+    Two sources of truth, fused:
+    1. **Primary** — HA history of the `pump_switch_entity` (switch on/off
+       transitions). Survives Shelly outages because HA keeps the state
+       in its recorder even when the device goes unavailable.
+    2. **Fallback** — `pump_running` flag in the jsonl (derived from the
+       Shelly power reading at write time). Only used to cover gaps
+       where the switch entity wasn't set or HA history was empty.
     """
     try:
         days = int(request.rel_url.query.get("days", "30"))
@@ -878,45 +879,77 @@ async def api_activity(request: web.Request) -> web.Response:
         days = 30
     days = max(1, min(days, 90))
 
-    records = _read_jsonl_window(hours=days * 24)
-    # Sort defensively (jsonl is append-only so should already be sorted).
-    records.sort(key=lambda r: r.get("ts", ""))
+    now = datetime.now(timezone.utc)
+    start = now - timedelta(days=days)
 
     by_day: dict[str, dict] = {}
     last_start: str | None = None
-    prev_running: bool = False
-    prev_ts: datetime | None = None
 
-    for rec in records:
-        running = bool(rec.get("pump_running"))
-        try:
-            ts = datetime.fromisoformat(rec["ts"])
-        except Exception:  # noqa: BLE001
-            continue
+    def _slot(day_key: str) -> dict:
+        return by_day.setdefault(
+            day_key, {"day": day_key, "running_minutes": 0.0, "start_count": 0}
+        )
 
-        # Edge detection: off -> on means a new pump start.
-        if running and not prev_running:
-            last_start = rec["ts"]
-            day_key = ts.astimezone().date().isoformat()
-            slot = by_day.setdefault(
-                day_key, {"day": day_key, "running_minutes": 0, "start_count": 0}
-            )
-            slot["start_count"] += 1
+    # --- Primary source: HA history of the switch ---
+    sw_records: list[dict] = []
+    if PUMP_SWITCH_ENTITY:
+        sw_records = await _ha_history(PUMP_SWITCH_ENTITY, start, now)
 
-        # Running time accumulation: between consecutive records where
-        # pump_running is true, count the gap in minutes (capped at 15
-        # min to avoid counting huge gaps when the addon was offline).
-        if prev_running and prev_ts is not None:
-            delta = (ts - prev_ts).total_seconds() / 60
-            if 0 < delta <= 15:
+    primary_used = False
+    if sw_records:
+        primary_used = True
+        prev_state: str | None = None
+        prev_ts: datetime | None = None
+        for rec in sw_records:
+            ts_str = rec.get("last_changed") or rec.get("last_updated")
+            if not ts_str:
+                continue
+            try:
+                ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+            except Exception:  # noqa: BLE001
+                continue
+            state_val = rec.get("state")
+            # Detect off->on transition.
+            if state_val == "on" and prev_state != "on":
+                last_start = ts.isoformat()
+                _slot(ts.astimezone().date().isoformat())["start_count"] += 1
+            # Accumulate minutes while previous state was "on".
+            if prev_state == "on" and prev_ts is not None:
+                delta = (ts - prev_ts).total_seconds() / 60
+                if delta > 0:
+                    day_key = prev_ts.astimezone().date().isoformat()
+                    _slot(day_key)["running_minutes"] += delta
+            prev_state = state_val
+            prev_ts = ts
+        # If the last seen state was "on", count up to now.
+        if prev_state == "on" and prev_ts is not None:
+            delta = (now - prev_ts).total_seconds() / 60
+            if delta > 0:
                 day_key = prev_ts.astimezone().date().isoformat()
-                slot = by_day.setdefault(
-                    day_key, {"day": day_key, "running_minutes": 0, "start_count": 0}
-                )
-                slot["running_minutes"] += delta
+                _slot(day_key)["running_minutes"] += delta
 
-        prev_running = running
-        prev_ts = ts
+    # --- Fallback source: jsonl pump_running flag ---
+    if not primary_used:
+        records = _read_jsonl_window(hours=days * 24)
+        records.sort(key=lambda r: r.get("ts", ""))
+        prev_running = False
+        prev_ts2: datetime | None = None
+        for rec in records:
+            try:
+                ts = datetime.fromisoformat(rec["ts"])
+            except Exception:  # noqa: BLE001
+                continue
+            running = bool(rec.get("pump_running"))
+            if running and not prev_running:
+                last_start = rec["ts"]
+                _slot(ts.astimezone().date().isoformat())["start_count"] += 1
+            if prev_running and prev_ts2 is not None:
+                delta = (ts - prev_ts2).total_seconds() / 60
+                if 0 < delta <= 15:
+                    day_key = prev_ts2.astimezone().date().isoformat()
+                    _slot(day_key)["running_minutes"] += delta
+            prev_running = running
+            prev_ts2 = ts
 
     # Fill missing days with zero so the chart shows continuous bars.
     today = datetime.now().astimezone().date()
@@ -930,11 +963,20 @@ async def api_activity(request: web.Request) -> web.Response:
     week = sum(s["running_minutes"] for s in filled[-7:]) / 60
     month = sum(s["running_minutes"] for s in filled) / 60
 
+    # Shelly availability flag for the frontend.
+    pump_power = await _ha_state(PUMP_ENTITY) if PUMP_ENTITY else None
+    shelly_available = (
+        pump_power is not None
+        and pump_power.get("state") not in (None, "unknown", "unavailable")
+    )
+
     return web.json_response({
         "days": filled,
         "last_start": last_start,
         "total_running_hours_week": round(week, 2),
         "total_running_hours_month": round(month, 2),
+        "source": "ha_switch_history" if primary_used else "jsonl_fallback",
+        "shelly_available": shelly_available,
     })
 
 
