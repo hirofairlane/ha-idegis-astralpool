@@ -230,12 +230,36 @@ async function refreshSummary() {
       $("seconds-since").textContent = "sin lecturas";
     }
 
-    // Vital "now" values from the sticky measurements block.
+    // Vital "now" values: trusted = motor-on samples averaged over a
+    // >=10 min window (falls back to raw sticky if no valid sample yet).
+    // With the pump off the raw probes read a stuck floor (pH ~4.8), so we
+    // never surface those — we keep the last good average and flag how
+    // stale it is instead.
+    const tm = s.trusted_measurements || {};
     const m = s.measurements || {};
-    $("ph-now").innerHTML = fmt.withUnit(m.ph?.value, m.ph?.unit || "pH");
-    $("salt-now").innerHTML = fmt.withUnit(m.salinity?.value, m.salinity?.unit || "g/L");
-    $("temp-now").innerHTML = fmt.withUnit(m.temperature?.value, m.temperature?.unit || "°C");
-    $("prod-now").innerHTML = fmt.withUnit(m.production_percent?.value, m.production_percent?.unit || "%");
+    const winMin = Math.round((s.measurement_window_s || 600) / 60);
+    const tile = (id, key, unit) => {
+      const t = tm[key], r = m[key];
+      const v = t?.value ?? r?.value;
+      const u = t?.unit ?? r?.unit ?? unit;
+      $(id).innerHTML = fmt.withUnit(v, u);
+      const el = $(id);
+      const stale = t?.stale_seconds;
+      if (t && stale != null && stale > 180) {
+        el.title = `media ${winMin} min (motor en marcha) · dato de hace ${stale < 90 ? Math.round(stale) + " s" : (stale / 60).toFixed(0) + " min"}`;
+        el.classList.add("stale");
+      } else if (t) {
+        el.title = `media ${winMin} min · ${t.n} muestras con motor en marcha`;
+        el.classList.remove("stale");
+      } else {
+        el.title = "valor crudo (sin muestras válidas con motor en marcha)";
+        el.classList.remove("stale");
+      }
+    };
+    tile("ph-now", "ph", "pH");
+    tile("salt-now", "salinity", "g/L");
+    tile("temp-now", "temperature", "°C");
+    tile("prod-now", "production_percent", "%");
 
     // Last session
     const ls = s.last_session_closed || s.last_session || null;

@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.6.6 — 2026-06-17
+
+- **Trusted measurements: motor-on, time-averaged.** With the filter
+  pump off, the chlorinator keeps reporting its probes but they read a
+  stuck floor — pH was observed pegged at ~4.8 for hours overnight,
+  then jumping to a real 7.4 the instant the motor (≈1.1 kW) started.
+  The dashboard now only believes a pH / salinity / temperature /
+  production reading captured while the motor was actually pushing
+  water, and reports the **mean over a rolling ≥10 min window** of
+  those valid samples instead of the raw last value:
+  - New `measurement_flow_threshold_w` (default 50 W) — a sample counts
+    only when the recorded pump power is at or above this, comfortably
+    above the ~1.5 W contactor-coil baseline and below the running
+    motor. Falls back to the boolean `pump_running` flag when the
+    Shelly power isn't available.
+  - New `measurement_window_s` (default 600) — the averaging window.
+  - `GET /api/idegis/state` gains a `trusted_measurements` block
+    (`value`, `n`, `window_s`, `from`, `to`, `stale_seconds`). The raw
+    `measurements` block is kept for debugging.
+  - `GET /api/idegis/timeseries` now drops motor-off samples by default
+    (no more fake cliff on the charts); `?raw=1` restores the old
+    behaviour.
+  - The filtration recommendation reads the trusted temperature.
+  - Dashboard tiles show the trusted average, dim when the value is
+    stale (pump currently off → last good average carried over), and
+    tooltip the sample count / age.
+- **Version string fixed.** `ADDON_VERSION` in the code had lagged at
+  0.6.4 (the asset cache-buster and footer were stale); now tracks the
+  add-on version.
+
 ## 0.6.5 — 2026-06-17
 
 - **Filtration recommendation tuned for indoor + UV pools.** New

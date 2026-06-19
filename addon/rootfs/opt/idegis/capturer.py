@@ -60,6 +60,17 @@ DEFAULTS = {
     "net_n_clean_installed": False,
     "pump_running_threshold_w": 1.0,
     "pump_poll_interval_s": 5,
+    # Trusted-measurement gate. A pH/salinity/temperature reading is only
+    # believable while the filter motor is actually pushing water past the
+    # probes; with the pump off the chlorinator keeps reporting a stuck
+    # sensor floor (pH pegged ~4.8 was observed for hours overnight). We
+    # therefore (1) accept a sample only when the recorded pump power is at
+    # or above `measurement_flow_threshold_w` — well above the ~1.5 W
+    # contactor-coil baseline, well below the ~1.1 kW running motor — and
+    # (2) report the mean of the valid samples over a rolling window of at
+    # least `measurement_window_s` seconds rather than the raw last value.
+    "measurement_flow_threshold_w": 50.0,
+    "measurement_window_s": 600,
 }
 
 
@@ -106,6 +117,11 @@ NET_N_CLEAN_INSTALLED = bool(
 NET_N_CLEAN_TURNOVER_FACTOR = 0.6
 PUMP_THRESHOLD_W = float(OPTS.get("pump_running_threshold_w") or 100.0)
 PUMP_POLL_S = int(OPTS.get("pump_poll_interval_s") or 5)
+MEASURE_FLOW_THRESHOLD_W = float(OPTS.get("measurement_flow_threshold_w") or 50.0)
+MEASURE_WINDOW_S = float(OPTS.get("measurement_window_s") or 600)
+
+# Codec semantic names of the fields the dashboard treats as live readings.
+MEASURE_KEYS = ("ph", "salinity", "temperature", "production_percent")
 
 # Supervisor injects these when homeassistant_api is true.
 SUPERVISOR_TOKEN = os.environ.get("SUPERVISOR_TOKEN", "")
@@ -316,6 +332,77 @@ class State:
 
 
 state = State()
+
+
+# ---------- Trusted measurements (motor-on, time-averaged) -----------------
+
+
+def sample_flow_ok(rec: dict) -> bool:
+    """Was the filter motor actually pushing water when this record was
+    captured? Prefer the recorded pump power (independent of whatever
+    pump_running threshold was active at capture time); fall back to the
+    boolean flag only when the Shelly power wasn't available."""
+    pw = rec.get("pump_power_w")
+    if isinstance(pw, (int, float)):
+        return pw >= MEASURE_FLOW_THRESHOLD_W
+    return bool(rec.get("pump_running"))
+
+
+def trusted_measurements(
+    records: list[dict] | None,
+    window_s: float = MEASURE_WINDOW_S,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    """Mean of each measurement over the valid samples (motor running)
+    inside a trailing window of at least `window_s` seconds.
+
+    The window is anchored at the most recent *valid* sample, not at
+    wall-clock now: if the pump has been off for hours the last good
+    average (from when it last ran) is still the best estimate of the
+    water — `stale_seconds` tells the consumer how old it is. Samples
+    taken with the motor off (where the probes read a stuck floor) are
+    discarded entirely, so a long stretch of garbage can never drag the
+    average down."""
+    per: dict[str, list[tuple[datetime, float, str | None]]] = {
+        k: [] for k in MEASURE_KEYS
+    }
+    for rec in records or []:
+        if rec.get("endpoint") != "write" or not sample_flow_ok(rec):
+            continue
+        fields = rec.get("fields") or {}
+        if not fields:
+            continue
+        ms = summarise_measurements(decode_fields(fields))
+        if not ms:
+            continue
+        try:
+            ts = datetime.fromisoformat(rec["ts"])
+        except Exception:  # noqa: BLE001
+            continue
+        for k in MEASURE_KEYS:
+            m = ms.get(k)
+            if isinstance(m, dict) and m.get("value") is not None:
+                per[k].append((ts, float(m["value"]), m.get("unit")))
+
+    now = now or datetime.now(timezone.utc)
+    out: dict[str, Any] = {}
+    for k, samples in per.items():
+        if not samples:
+            continue
+        samples.sort(key=lambda x: x[0])
+        anchor = samples[-1][0]
+        win = [s for s in samples if (anchor - s[0]).total_seconds() <= window_s]
+        vals = [s[1] for s in win]
+        out[k] = {
+            "value": round(sum(vals) / len(vals), 2),
+            "unit": win[-1][2],
+            "n": len(vals),
+            "window_s": window_s,
+            "from": win[0][0].isoformat(),
+            "to": anchor.isoformat(),
+            "stale_seconds": round((now - anchor).total_seconds(), 1),
+        }
+    return out
 
 
 def append_jsonl(record: dict) -> None:
@@ -534,6 +621,13 @@ async def api_state(request: web.Request) -> web.Response:  # noqa: ARG001
         "measurements": summarise_measurements(
             decode_fields(state.sticky_fields)
         ),
+        # Trusted = motor-on samples averaged over a >=10 min window. This
+        # is what the dashboard tiles should show; the raw `measurements`
+        # block above is kept for debugging (it can read the stuck sensor
+        # floor when the pump is off).
+        "trusted_measurements": trusted_measurements(list(state.history), now=now),
+        "measurement_window_s": MEASURE_WINDOW_S,
+        "measurement_flow_threshold_w": MEASURE_FLOW_THRESHOLD_W,
         "current_session": State._snapshot_session(state.current_session),
         "last_session": state.last_session_closed,
         "session_age_seconds": session_age_s,
@@ -611,6 +705,11 @@ async def api_timeseries(request: web.Request) -> web.Response:
     except ValueError:
         points = 240
     points = max(10, min(points, 2000))
+    # By default the series only includes samples captured while the filter
+    # motor was running — the probes read a stuck floor with the pump off,
+    # which otherwise paints a fake cliff on the charts. ?raw=1 disables the
+    # gate for debugging.
+    raw_mode = request.rel_url.query.get("raw") == "1"
 
     records = _read_jsonl_window(hours)
     # Order the records chronologically — _read_jsonl_window streams the
@@ -640,6 +739,8 @@ async def api_timeseries(request: web.Request) -> web.Response:
 
     for rec in records:
         if rec.get("endpoint") != "write":
+            continue
+        if not raw_mode and not sample_flow_ok(rec):
             continue
         fields = rec.get("fields") or {}
         if not fields:
@@ -922,8 +1023,13 @@ async def api_recommendation(request: web.Request) -> web.Response:  # noqa: ARG
     recommendation drops well below the historical "1 turnover/day"
     rule of thumb.
     """
-    ms = summarise_measurements(decode_fields(state.sticky_fields)) or {}
-    temp_c = (ms.get("temperature") or {}).get("value")
+    # Prefer the trusted (motor-on, time-averaged) temperature; fall back to
+    # the raw sticky value only if no valid sample exists yet.
+    tm = trusted_measurements(list(state.history))
+    temp_c = (tm.get("temperature") or {}).get("value")
+    if temp_c is None:
+        ms = summarise_measurements(decode_fields(state.sticky_fields)) or {}
+        temp_c = (ms.get("temperature") or {}).get("value")
 
     calc = _compute_recommendation(
         volume_m3=POOL_VOLUME_M3,
@@ -1269,7 +1375,7 @@ def build_proxy_app() -> web.Application:
     return app
 
 
-ADDON_VERSION = "0.6.4"
+ADDON_VERSION = "0.6.6"
 
 
 async def ingress_index(request: web.Request) -> web.Response:  # noqa: ARG001

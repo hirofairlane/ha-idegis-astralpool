@@ -28,6 +28,17 @@ class IdegisSensorDescription(SensorEntityDescription):
     value_fn: Callable[[dict[str, Any]], Any]
 
 
+def _measure(d: dict[str, Any], key: str) -> Any:
+    """Live water reading, trusting the capturer's motor-on/time-averaged
+    value (capturer >= 0.6.6) and falling back to the raw sticky value for
+    older capturers. The raw block can read a stuck sensor floor while the
+    pump is off (pH pegged ~4.8), so trusted is always preferred."""
+    trusted = (d.get("trusted_measurements") or {}).get(key)
+    if isinstance(trusted, dict) and trusted.get("value") is not None:
+        return trusted["value"]
+    return (d.get("measurements") or {}).get(key, {}).get("value")
+
+
 SENSORS: tuple[IdegisSensorDescription, ...] = (
     IdegisSensorDescription(
         key="last_seen",
@@ -198,7 +209,7 @@ SENSORS: tuple[IdegisSensorDescription, ...] = (
         native_unit_of_measurement="pH",
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=2,
-        value_fn=lambda d: (d.get("measurements") or {}).get("ph", {}).get("value"),
+        value_fn=lambda d: _measure(d, "ph"),
     ),
     IdegisSensorDescription(
         key="salinity",
@@ -207,9 +218,7 @@ SENSORS: tuple[IdegisSensorDescription, ...] = (
         native_unit_of_measurement="g/L",
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=2,
-        value_fn=lambda d: (
-            (d.get("measurements") or {}).get("salinity", {}).get("value")
-        ),
+        value_fn=lambda d: _measure(d, "salinity"),
     ),
     IdegisSensorDescription(
         key="water_temperature",
@@ -219,9 +228,7 @@ SENSORS: tuple[IdegisSensorDescription, ...] = (
         native_unit_of_measurement="°C",
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=1,
-        value_fn=lambda d: (
-            (d.get("measurements") or {}).get("temperature", {}).get("value")
-        ),
+        value_fn=lambda d: _measure(d, "temperature"),
     ),
     IdegisSensorDescription(
         key="production_percent",
@@ -230,9 +237,7 @@ SENSORS: tuple[IdegisSensorDescription, ...] = (
         native_unit_of_measurement="%",
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=0,
-        value_fn=lambda d: (
-            (d.get("measurements") or {}).get("production_percent", {}).get("value")
-        ),
+        value_fn=lambda d: _measure(d, "production_percent"),
     ),
     # Session sensors (capturer v0.6.0)
     IdegisSensorDescription(

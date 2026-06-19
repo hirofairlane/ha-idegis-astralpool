@@ -126,6 +126,9 @@ main {
 .tile-value.green { color: var(--g); }
 .tile-value.amber { color: var(--y); }
 .tile-value.violet { color: var(--p); }
+/* Trusted value carried over from the last motor-on window — the pump is
+   off right now, so this reading is the last good average, not live. */
+.tile-value.stale, .chart-value.stale { opacity: 0.5; }
 .tile-sub { font-size: 12px; color: var(--m); margin-top: 4px; }
 
 /* ---- Panels --------------------------------------------------------- */
