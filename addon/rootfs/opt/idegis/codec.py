@@ -131,7 +131,6 @@ FIELDS_INFO: dict[str, dict[str, Any]] = {
     "CK": {"type": "unknown", "name": "field_CK", "unit": None},
     "CC": {"type": "unknown", "name": "field_CC", "unit": None},
     "C7": {"type": "unknown", "name": "field_C7", "unit": None},
-    "9C": {"type": "bool", "name": "flag_9c", "unit": None},
 }
 
 

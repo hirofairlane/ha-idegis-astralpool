@@ -1,8 +1,8 @@
 """Sensor platform — surfaces what we already have from path A capture."""
 from __future__ import annotations
 
-from dataclasses import dataclass
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any
 
 from homeassistant.components.sensor import (

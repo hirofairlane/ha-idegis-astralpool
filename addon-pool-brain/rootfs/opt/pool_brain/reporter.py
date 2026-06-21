@@ -7,16 +7,14 @@ to Telegram with a compressed text version if email service is not set.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
-from typing import Any
-
-from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 import charts
 from aggregator import AGG, COUNTERS
 from config import SETTINGS
 from ha_client import HA
+from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 log = logging.getLogger("pool_brain.reporter")
 

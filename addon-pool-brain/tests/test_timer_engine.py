@@ -6,7 +6,6 @@ multiplier and the combined recommendation.
 from __future__ import annotations
 
 import pytest
-
 from timer_engine import (
     TimerInput,
     _base_minutes_from_temp,
@@ -16,7 +15,6 @@ from timer_engine import (
     recommended_minutes_today,
     recommended_minutes_week,
 )
-
 
 _OK_BANDS = {
     "ph": "ok",

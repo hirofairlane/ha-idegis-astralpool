@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import pytest
-
 from nominal_learner import (
     DEFAULT_ALPHA,
     DEFAULT_NOISE_FLOOR_W,

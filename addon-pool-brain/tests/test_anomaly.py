@@ -5,17 +5,13 @@ deterministic. We never patch real time.
 """
 from __future__ import annotations
 
-import pytest
-
 from anomaly import (
     DRY_DURATION_S,
-    OVERCURRENT_DURATION_S,
     STUCK_DURATION_S,
     Latched,
     Sample,
     decide,
 )
-
 
 # ---------- Helpers --------------------------------------------------------
 

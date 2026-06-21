@@ -15,17 +15,16 @@ import logging
 import sys
 from pathlib import Path
 
+import bootstrap
+import pump_watch
+from aggregator import AGG
 from aiohttp import web
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
-
-from aggregator import AGG, COUNTERS
-import bootstrap
 from capturer_client import CAPTURER
 from config import SETTINGS
 from ha_client import HA
 from mqtt_pub import MQTT
-import pump_watch
 from reporter import send_weekly_report
 
 # ----- Logging --------------------------------------------------------------

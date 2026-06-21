@@ -1,0 +1,16 @@
+# Repo-wide code-quality gate (shared QA/CI/TDD standard).
+#
+# Components linted:
+#   * addon/                 — Idegis cloud capturer (rootfs Python + codec)
+#   * addon-pool-brain/      — Pool Brain add-on (rootfs Python + its tests)
+#   * custom_components/     — HACS integration (idegis_astralpool)
+#   * tests/                 — repo-level smoke/regression tests
+#
+# Non-Python assets (docs/, esphome/, ha-packages/, dashboards/, static JS/CSS)
+# are not linted by ruff.
+target-version = "py311"
+line-length = 100
+
+[lint]
+# pyflakes + pycodestyle (logical/syntax subset) + import sorting.
+select = ["E4", "E7", "E9", "F", "I"]

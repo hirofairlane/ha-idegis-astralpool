@@ -1,0 +1,107 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  # ── Static validation: YAML parses, manifests are valid JSON, the add-on
+  #    Python entrypoints compile, and config↔code versions are in sync. ──
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install PyYAML
+        run: pip install pyyaml
+      - name: Add-on Python entrypoints compile
+        run: |
+          python -m py_compile addon/rootfs/opt/idegis/capturer.py
+          python -m py_compile addon/rootfs/opt/idegis/codec.py
+          python -m py_compile addon-pool-brain/rootfs/opt/pool_brain/main.py
+      - name: YAML + JSON + version-sync checks
+        run: python tests/validate_repo.py
+
+  # ── Regression suite + code-quality gate (the "Sonar-lite" loop). Runs the
+  #    repo-level tests (codec + capturer) and the in-tree pool-brain suite. ──
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install deps
+        run: |
+          pip install ruff pytest pytest-cov pytest-asyncio pyyaml aiohttp
+          pip install -r addon-pool-brain/requirements-dev.txt
+      - name: Ruff (code quality)
+        run: ruff check .
+      - name: Pytest — repo-level (codec + capturer) with coverage
+        env:
+          IDEGIS_TESTING: "1"
+        run: >-
+          pytest tests/ -q
+          --cov=addon/rootfs/opt/idegis
+          --cov-report=term-missing
+      - name: Pytest — pool-brain add-on suite
+        working-directory: addon-pool-brain
+        run: pytest -q
+
+  # ── Full Docker build (native amd64) of each add-on — validates the
+  #    Dockerfiles end to end (apt/apk deps + pip installs). ──
+  build-capturer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build capturer add-on image (amd64)
+        run: |
+          docker build \
+            --build-arg BUILD_FROM=ghcr.io/hassio-addons/base:17.2.0 \
+            -t idegis-capturer:ci addon
+
+  build-pool-brain:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build pool-brain add-on image (amd64)
+        run: |
+          docker build \
+            --build-arg BUILD_FROM=ghcr.io/hassio-addons/base:17.2.0 \
+            -t idegis-pool-brain:ci addon-pool-brain
+
+  # ── Official Home Assistant add-on config linter (advisory: this 3rd-party
+  #    linter is opinionated and may flag legit local-build configs; it informs
+  #    but does not gate the build). One run per add-on. ──
+  addon-lint:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        path: ["./addon", "./addon-pool-brain"]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Home Assistant add-on linter
+        uses: frenck/action-addon-linter@v2
+        with:
+          path: ${{ matrix.path }}
+
+  # ── HACS validation (advisory): checks the integration is HACS-installable
+  #    (manifest, hacs.json, brands). Advisory because brands registration and
+  #    GitHub Releases are out of band of this repo's CI. ──
+  hacs:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: HACS validation
+        uses: hacs/action@main
+        with:
+          category: integration
+          ignore: brands

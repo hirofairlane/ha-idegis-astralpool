@@ -18,7 +18,6 @@ from __future__ import annotations
 import base64
 import io
 from datetime import datetime, timedelta
-from typing import Iterable
 
 import matplotlib
 

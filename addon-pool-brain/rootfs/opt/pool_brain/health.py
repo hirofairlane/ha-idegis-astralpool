@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-
 # ----- Bands ----------------------------------------------------------------
 
 def ph_band(ph: float | None) -> str:

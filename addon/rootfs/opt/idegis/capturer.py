@@ -20,6 +20,7 @@ be reprocessed offline.
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import logging
 import os
@@ -31,8 +32,7 @@ from pathlib import Path
 from typing import Any
 
 from aiohttp import ClientSession, ClientTimeout, TCPConnector, web
-
-from codec import decode_field, decode_fields, summarise_measurements  # noqa: E402
+from codec import decode_fields, summarise_measurements
 
 # ---------- Configuration --------------------------------------------------
 
@@ -127,8 +127,14 @@ MEASURE_KEYS = ("ph", "salinity", "temperature", "production_percent")
 SUPERVISOR_TOKEN = os.environ.get("SUPERVISOR_TOKEN", "")
 HASS_API = "http://supervisor/core/api"
 
-JSONL_PATH = Path("/data/captures/idegis_full.jsonl")
-JSONL_PATH.parent.mkdir(parents=True, exist_ok=True)
+# Data dir is configurable (IDEGIS_DATA) so the module can be imported in
+# tests against a temp dir; defaults to the add-on's /data. The import-time
+# mkdir is skipped under IDEGIS_TESTING so importing has no filesystem side
+# effects in CI.
+_DATA_DIR = Path(os.environ.get("IDEGIS_DATA", "/data"))
+JSONL_PATH = _DATA_DIR / "captures" / "idegis_full.jsonl"
+if not os.environ.get("IDEGIS_TESTING"):
+    JSONL_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 logging.basicConfig(
     level=OPTS["log_level"].upper(),
@@ -262,6 +268,20 @@ class State:
                         agg["max"] = max(agg["max"], val)
                         agg["last"] = val
 
+        if record.get("response_body_b64"):
+            self.last_response = {
+                "ts": record["ts"],
+                "endpoint": ep,
+                "size_bytes": record.get("response_size_bytes"),
+                "body_b64": record["response_body_b64"],
+                "fields": record.get("response_fields"),
+            }
+        rfields = record.get("response_fields")
+        if rfields:
+            # Merge response fields too — these are what the cloud told
+            # the device to do next.
+            self.last_response_fields = rfields
+
     def _roll_session(self, ts: datetime) -> None:
         """Close the current session if it's been idle too long."""
         last = self.current_session.get("last_ts")
@@ -315,20 +335,6 @@ class State:
             return
         self.last_session_closed = self._snapshot_session(s)
         self.current_session = self._empty_session()
-
-        if record.get("response_body_b64"):
-            self.last_response = {
-                "ts": record["ts"],
-                "endpoint": ep,
-                "size_bytes": record.get("response_size_bytes"),
-                "body_b64": record["response_body_b64"],
-                "fields": record.get("response_fields"),
-            }
-        rfields = record.get("response_fields")
-        if rfields:
-            # Merge response fields too — these are what the cloud told
-            # the device to do next.
-            self.last_response_fields = rfields
 
 
 state = State()
@@ -430,8 +436,6 @@ def warm_from_jsonl() -> None:
 
 
 # ---------- HTTP proxy on port 80 ------------------------------------------
-
-import base64
 
 
 async def proxy_handler(request: web.Request) -> web.StreamResponse:

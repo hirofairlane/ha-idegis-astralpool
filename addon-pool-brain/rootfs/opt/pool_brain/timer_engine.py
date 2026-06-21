@@ -11,7 +11,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-
 # Indoor-pool minutes per day based on water temperature.
 # Designed for a single daily run; the user can split it.
 _BASE_BY_TEMP: list[tuple[float, int]] = [

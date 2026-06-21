@@ -16,9 +16,8 @@ Definitions:
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Literal
-
 
 # Default thresholds — also exposed as constants so tests can reuse them.
 OVERCURRENT_DURATION_S = 30

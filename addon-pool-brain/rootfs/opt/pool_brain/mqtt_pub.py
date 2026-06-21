@@ -17,7 +17,6 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import aiomqtt
-
 from config import SETTINGS
 
 log = logging.getLogger("pool_brain.mqtt")

@@ -11,7 +11,6 @@ import logging
 from typing import Any
 
 import aiohttp
-
 from config import SETTINGS
 
 log = logging.getLogger("pool_brain.ha")

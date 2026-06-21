@@ -7,7 +7,6 @@ the weighted score.
 from __future__ import annotations
 
 import pytest
-
 from health import (
     HealthInput,
     all_ok,
@@ -17,7 +16,6 @@ from health import (
     salt_band,
     temperature_band,
 )
-
 
 # ---------- pH ---------------------------------------------------------------
 
