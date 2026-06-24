@@ -47,11 +47,32 @@ jobs:
           IDEGIS_TESTING: "1"
         run: >-
           pytest tests/ -q
+          --ignore=tests/test_dashboard_e2e.py
           --cov=addon/rootfs/opt/idegis
           --cov-report=term-missing
       - name: Pytest — pool-brain add-on suite
         working-directory: addon-pool-brain
         run: pytest -q
+
+  # ── End-to-end visualization tests: render the real capturer dashboard
+  #    (index.html + app.js) in headless Chromium against the real aiohttp app
+  #    seeded with fixtures, and assert the SVG charts actually draw. Catches
+  #    front-end render regressions the Python suites can't see. ──
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install deps
+        run: pip install aiohttp pytest pytest-asyncio pyyaml playwright
+      - name: Install Chromium
+        run: python -m playwright install --with-deps chromium
+      - name: Pytest — dashboard E2E (visualization)
+        env:
+          IDEGIS_TESTING: "1"
+        run: pytest tests/test_dashboard_e2e.py -q
 
   # ── Full Docker build (native amd64) of each add-on — validates the
   #    Dockerfiles end to end (apt/apk deps + pip installs). ──

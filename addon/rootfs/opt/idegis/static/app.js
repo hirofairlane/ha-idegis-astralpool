@@ -75,12 +75,16 @@ function drawLineChart(svg, points, opts) {
   }
 
   // Determine vertical range; honour the band so the chart shows it.
+  // Only *finite* band bounds count — bands use ±Infinity to mean "open
+  // ended" (e.g. pH < 7.2 is bad). Folding those into the range would make
+  // yMin/yMax ±Infinity, yRange Infinity, and every plotted y NaN — which
+  // blanked all four vitals charts (invisible line + "—" axis labels).
   let yMin = Math.min(...real.map(p => p.v));
   let yMax = Math.max(...real.map(p => p.v));
   if (opts.bands) {
     for (const b of opts.bands) {
-      if (b.min !== null && b.min !== undefined) yMin = Math.min(yMin, b.min);
-      if (b.max !== null && b.max !== undefined) yMax = Math.max(yMax, b.max);
+      if (Number.isFinite(b.min)) yMin = Math.min(yMin, b.min);
+      if (Number.isFinite(b.max)) yMax = Math.max(yMax, b.max);
     }
   }
   // Pad 5%.
@@ -96,8 +100,10 @@ function drawLineChart(svg, points, opts) {
   // ---- Reference bands -----
   if (opts.bands) {
     for (const b of opts.bands) {
-      const top = b.max !== null && b.max !== undefined ? b.max : yMax;
-      const bot = b.min !== null && b.min !== undefined ? b.min : yMin;
+      // Open-ended bands (±Infinity) clamp to the plotted range.
+      let top = Number.isFinite(b.max) ? b.max : yMax;
+      let bot = Number.isFinite(b.min) ? b.min : yMin;
+      top = Math.min(top, yMax); bot = Math.max(bot, yMin);
       const y = m.top + (1 - (top - yMin) / yRange) * plotH;
       const h = ((top - bot) / yRange) * plotH;
       svgEl("rect", {
@@ -261,20 +267,24 @@ async function refreshSummary() {
     tile("temp-now", "temperature", "°C");
     tile("prod-now", "production_percent", "%");
 
-    // Last session
+    // Last session. The backend snapshot uses `measurements` keyed by the
+    // codec's semantic names (ph/salinity/temperature/production_percent),
+    // `duration_s` and `last_ts` — keep these in sync with
+    // State._snapshot_session in capturer.py.
     const ls = s.last_session_closed || s.last_session || null;
-    if (ls && ls.aggregates) {
-      const agg = ls.aggregates;
+    if (ls && ls.measurements) {
+      const agg = ls.measurements;
       $("ses-status").textContent = "cerrada";
-      $("ses-duration").textContent = ls.duration_seconds
-        ? `${Math.round(ls.duration_seconds / 60)} min` : "—";
+      $("ses-duration").textContent = ls.duration_s
+        ? `${Math.round(ls.duration_s / 60)} min` : "—";
       $("ses-writes").textContent = ls.n_writes ?? "—";
-      const get = (k) => agg[k]?.avg !== undefined ? fmt.num(agg[k].avg, 2) : "—";
-      $("ses-ph").textContent = get("SG");
-      $("ses-salt").textContent = get("IT");
-      $("ses-temp").textContent = get("CY");
-      $("ses-prod").textContent = get("GY");
-      $("ses-end").textContent = ls.end_ts ? fmt.abs(ls.end_ts) : "—";
+      const get = (k) => agg[k]?.avg !== undefined && agg[k]?.avg !== null
+        ? fmt.num(agg[k].avg, 2) : "—";
+      $("ses-ph").textContent = get("ph");
+      $("ses-salt").textContent = get("salinity");
+      $("ses-temp").textContent = get("temperature");
+      $("ses-prod").textContent = get("production_percent");
+      $("ses-end").textContent = ls.last_ts ? fmt.abs(ls.last_ts) : "—";
     } else {
       $("ses-status").textContent = "ninguna sesión cerrada todavía";
       ["ses-duration", "ses-writes", "ses-ph", "ses-salt", "ses-temp", "ses-prod", "ses-end"]

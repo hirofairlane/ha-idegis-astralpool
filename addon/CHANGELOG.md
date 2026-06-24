@@ -1,5 +1,60 @@
 # Changelog
 
+## 0.6.9 — 2026-06-24
+
+- **Fixed: the vitals charts (pH / salinity / temperature / production) were
+  blank.** The chart autoscale folded the reference bands' open-ended
+  `±Infinity` bounds into the Y-range, so `yRange` became `Infinity` and every
+  plotted coordinate and axis label came out `NaN` — an invisible line over
+  `—` labels. The autoscale now ignores non-finite band bounds and clamps
+  open-ended bands to the plotted range.
+- **Fixed: `/api/idegis/state` could 500 and blank every summary tile.** It
+  read `last["path"]` (plus `upstream_status` / `upstream_time_s`) with a hard
+  subscript; any history record without those optional proxy fields raised
+  `KeyError` and took down the whole endpoint. Now read defensively.
+- **New: end-to-end visualization tests** (`tests/test_dashboard_e2e.py`).
+  These render the real dashboard in headless Chromium against the real
+  aiohttp app seeded with fixtures and assert the SVG charts actually draw a
+  finite line, the tiles show numbers, and no API endpoint errors. Wired into
+  CI as a dedicated `e2e` job. This is the regression net for front-end render
+  bugs the Python suites cannot see — it reproduces both fixes above.
+
+
+## 0.6.8 — 2026-06-22
+
+- **Capture store moved to `/share` so it survives add-on lifecycle events.**
+  The JSON-Lines history used to live in the add-on's private `/data`
+  volume, which the Supervisor **wipes on an uninstall or a
+  repository/slug migration**. That is exactly what happened when the
+  add-on moved from the `local` repository to a git repository
+  (`local_idegis_capturer` → `37fb99c1_idegis_capturer`): the Supervisor
+  ran `Removing app data folder …/local_idegis_capturer` and the entire
+  capture corpus was lost.
+  - The store now defaults to `/share/idegis_capturer/captures/idegis_full.jsonl`.
+    `/share` persists across uninstall / slug changes **and** is included in
+    Home Assistant backups.
+  - `config.yaml` now maps `share:rw`.
+  - On first start after the upgrade, the old `/data/captures/idegis_full.jsonl`
+    (if present) is copied forward once, so no captures are lost in the move.
+  - `/data/options.json` is unchanged — it stays Supervisor-managed in `/data`.
+
+## 0.6.7 — 2026-06-22
+
+- **Fix: "Última sesión" rendered blank / stuck on "ninguna sesión cerrada
+  todavía".** The d4f4ba3 codec-key rename made the closed-session snapshot
+  emit a `measurements` map keyed by semantic names
+  (`ph` / `salinity` / `temperature` / `production_percent`) plus
+  `duration_s` / `last_ts`, but both consumers were never updated and still
+  read the old `aggregates` map keyed by raw codec codes (`SG`/`IT`/`CY`/`GY`)
+  and `duration_seconds` / `end_ts`:
+  - The ingress dashboard (`app.js`) read `ls.aggregates`, which is always
+    `undefined`, so it permanently fell through to the empty state — even
+    after a session had actually closed.
+  - The desktop HTML status page (`show_status`) had the same mismatch.
+  Both now read the live snapshot schema. Added a regression test
+  (`test_closed_session_snapshot_schema`) that pins the snapshot contract so
+  the renderers and `_snapshot_session` can't drift apart again.
+
 ## 0.6.6 — 2026-06-17
 
 - **Trusted measurements: motor-on, time-averaged.** With the filter

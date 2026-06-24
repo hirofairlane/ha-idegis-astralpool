@@ -14,8 +14,11 @@ Two responsibilities running in a single aiohttp application:
    /api/idegis/health, /state, /history, /analyze, /last_response.
 
 Persistent history is appended as JSON-Lines to
-/data/captures/idegis_full.jsonl so it survives add-on restarts and can
-be reprocessed offline.
+/share/idegis_capturer/captures/idegis_full.jsonl. It lives under /share
+(not the add-on's private /data) so it survives an add-on uninstall or a
+repository/slug migration — the Supervisor wipes /data on those, which is
+how the pre-0.6.8 store was lost once. It also gets picked up by HA
+backups, and can be reprocessed offline.
 """
 from __future__ import annotations
 
@@ -25,6 +28,7 @@ import json
 import logging
 import os
 import re
+import shutil
 import sys
 from collections import Counter, deque
 from datetime import datetime, timedelta, timezone
@@ -127,12 +131,33 @@ MEASURE_KEYS = ("ph", "salinity", "temperature", "production_percent")
 SUPERVISOR_TOKEN = os.environ.get("SUPERVISOR_TOKEN", "")
 HASS_API = "http://supervisor/core/api"
 
-# Data dir is configurable (IDEGIS_DATA) so the module can be imported in
-# tests against a temp dir; defaults to the add-on's /data. The import-time
-# mkdir is skipped under IDEGIS_TESTING so importing has no filesystem side
-# effects in CI.
-_DATA_DIR = Path(os.environ.get("IDEGIS_DATA", "/data"))
-JSONL_PATH = _DATA_DIR / "captures" / "idegis_full.jsonl"
+# Capture store base dir. Configurable via IDEGIS_DATA so the module can be
+# imported in tests against a temp dir. In production it defaults to /share
+# (mapped read-write in config.yaml) rather than the add-on's private /data:
+# the Supervisor wipes /data on an uninstall or a repository/slug migration,
+# which is how the historical store was lost once. /share persists across the
+# add-on lifecycle and is included in HA backups. The import-time mkdir is
+# skipped under IDEGIS_TESTING so importing has no filesystem side effects.
+_CAPTURE_DIR = Path(os.environ.get("IDEGIS_DATA", "/share/idegis_capturer"))
+JSONL_PATH = _CAPTURE_DIR / "captures" / "idegis_full.jsonl"
+# Pre-0.6.8 location, inside the volatile /data volume. We migrate it once.
+_LEGACY_JSONL = Path("/data/captures/idegis_full.jsonl")
+
+
+def _migrate_legacy_store() -> None:
+    """One-time seed of the /share store from the old /data location.
+
+    Runs only when the new store doesn't exist yet but the legacy one does,
+    so an upgrade from <=0.6.7 carries its captures forward instead of
+    starting empty. Idempotent and never destructive (copy, not move)."""
+    if JSONL_PATH.exists() or not _LEGACY_JSONL.exists():
+        return
+    try:
+        shutil.copy2(_LEGACY_JSONL, JSONL_PATH)
+    except OSError as exc:  # noqa: BLE001
+        log.warning("legacy store migration failed: %s", exc)
+
+
 if not os.environ.get("IDEGIS_TESTING"):
     JSONL_PATH.parent.mkdir(parents=True, exist_ok=True)
 
@@ -420,6 +445,7 @@ def append_jsonl(record: dict) -> None:
 
 
 def warm_from_jsonl() -> None:
+    _migrate_legacy_store()
     if not JSONL_PATH.exists():
         return
     try:
@@ -608,9 +634,13 @@ async def api_state(request: web.Request) -> web.Response:  # noqa: ARG001
         "device_id": state.device_id,
         "session_token": state.session_token,
         "last_fields": state.last_fields,
-        "last_endpoint": last["path"] if last else None,
-        "last_upstream_status": last["upstream_status"] if last else None,
-        "last_upstream_time_s": last["upstream_time_s"] if last else None,
+        # Defensive .get(): history records are whatever ingest() was handed
+        # and are not guaranteed to carry the proxy's optional path/upstream
+        # fields. A hard subscript here 500s the entire /state endpoint and
+        # blanks every dashboard tile when one is absent.
+        "last_endpoint": (last or {}).get("path"),
+        "last_upstream_status": (last or {}).get("upstream_status"),
+        "last_upstream_time_s": (last or {}).get("upstream_time_s"),
         "last_response_size_bytes": (
             state.last_response["size_bytes"] if state.last_response else None
         ),
@@ -1379,7 +1409,7 @@ def build_proxy_app() -> web.Application:
     return app
 
 
-ADDON_VERSION = "0.6.6"
+ADDON_VERSION = "0.6.9"
 
 
 async def ingress_index(request: web.Request) -> web.Response:  # noqa: ARG001
@@ -1428,7 +1458,7 @@ async def _legacy_ingress_index(request: web.Request) -> web.Response:  # noqa: 
             return f"{v} {unit}".strip() if v is not None else "—"
         return "—"
 
-    last_session_aggs = last_session_snapshot.get("aggregates") or {}
+    last_session_aggs = last_session_snapshot.get("measurements") or {}
 
     def _agg(metric: str, key: str = "avg") -> str:
         a = last_session_aggs.get(metric)
@@ -1448,9 +1478,9 @@ async def _legacy_ingress_index(request: web.Request) -> web.Response:  # noqa: 
         _row("pH (live)", _live("ph")),
         _row("Salinity (live)", _live("salinity")),
         _row("Water temperature (live)", _live("temperature")),
-        _row("Last session pH avg", _agg("SG")),
-        _row("Last session salt avg", _agg("IT")),
-        _row("Last session duration (s)", last_session_snapshot.get("duration_seconds")),
+        _row("Last session pH avg", _agg("ph")),
+        _row("Last session salt avg", _agg("salinity")),
+        _row("Last session duration (s)", last_session_snapshot.get("duration_s")),
     ]
 
     html = f"""<!doctype html>

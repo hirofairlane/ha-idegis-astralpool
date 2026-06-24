@@ -133,7 +133,7 @@ def test_summarise_measurements_keeps_only_measures(codec):
 # ── capturer: importable without side effects, version exposed ──────────────
 
 def test_capturer_imports_and_version(capturer):
-    assert capturer.ADDON_VERSION == "0.6.6"
+    assert capturer.ADDON_VERSION == "0.6.9"
 
 
 def test_capturer_data_dir_is_temp(capturer):
@@ -185,6 +185,88 @@ def test_force_close_session_does_not_crash(capturer):
     st.current_session["n_writes"] = 1
     st.force_close_session()  # must not raise
     assert st.current_session["n_writes"] == 0
+
+
+def test_closed_session_snapshot_schema(capturer):
+    """The closed-session snapshot must expose the schema the dashboard
+    renderers consume: a ``measurements`` map keyed by the codec's *semantic*
+    names (ph / salinity / temperature / production_percent), plus
+    ``duration_s`` and ``last_ts``.
+
+    Regression for the d4f4ba3 codec-key rename: the snapshot started
+    emitting semantic keys (ph, …) under ``measurements`` while both
+    consumers (app.js + the desktop HTML in show_status) still read the old
+    ``aggregates`` map keyed by raw codec codes (SG/IT/CY/GY) and
+    ``duration_seconds`` — so "Última sesión" rendered blank and the UI
+    permanently showed "ninguna sesión cerrada todavía".
+    """
+    st = capturer.State()
+    # Two writes carrying pH (SG) and temperature (CY); IT/GY absent.
+    st.ingest({
+        "ts": "2026-06-02T21:20:00+00:00", "endpoint": "write",
+        "fields": {"SG": "Ugfb", "CY": "adbgcI"},
+    })
+    st.ingest({
+        "ts": "2026-06-02T21:25:00+00:00", "endpoint": "write",
+        "fields": {"SG": "Ugfc", "CY": "adbgdI"},
+    })
+    assert st.last_session_closed is None  # still open
+    st.force_close_session()
+
+    snap = st.last_session_closed
+    assert snap is not None
+    # The contract the renderers depend on:
+    assert "measurements" in snap and "aggregates" not in snap
+    assert "duration_s" in snap and "duration_seconds" not in snap
+    assert "last_ts" in snap
+    # Measurements keyed by semantic names, not raw codec codes.
+    assert set(snap["measurements"]) == {"ph", "temperature"}
+    assert "SG" not in snap["measurements"]
+    ph = snap["measurements"]["ph"]
+    assert ph["n"] == 2 and ph["avg"] is not None
+    assert snap["duration_s"] == pytest.approx(300.0)  # 5 min between writes
+    assert snap["n_writes"] == 2
+
+
+# ── capturer: persistent store location + legacy migration ──────────────────
+
+def test_capture_store_not_in_data_volume(capturer):
+    """The store must not live in the add-on's volatile /data volume — that
+    is wiped on uninstall / slug migration (how the corpus was lost once).
+    The legacy pointer, by contrast, intentionally points at /data."""
+    assert "captures" in str(capturer.JSONL_PATH)
+    assert not str(capturer.JSONL_PATH).startswith("/data/")
+    assert str(capturer._LEGACY_JSONL) == "/data/captures/idegis_full.jsonl"
+
+
+def test_migrate_legacy_store(capturer, tmp_path, monkeypatch):
+    """Upgrading from <=0.6.7 must carry the old /data store forward, and the
+    migration must be idempotent and non-destructive."""
+    new = tmp_path / "share" / "captures" / "idegis_full.jsonl"
+    legacy = tmp_path / "data" / "captures" / "idegis_full.jsonl"
+    new.parent.mkdir(parents=True)
+    legacy.parent.mkdir(parents=True)
+    legacy.write_text('{"ts":"2026-06-01T00:00:00+00:00","endpoint":"read"}\n')
+    monkeypatch.setattr(capturer, "JSONL_PATH", new)
+    monkeypatch.setattr(capturer, "_LEGACY_JSONL", legacy)
+
+    capturer._migrate_legacy_store()
+    assert new.exists()
+    assert new.read_text() == legacy.read_text()  # copied forward
+    assert legacy.exists()  # not destructive
+
+    # Idempotent: a second run must not clobber a store that now has new data.
+    new.write_text("NEWER\n")
+    capturer._migrate_legacy_store()
+    assert new.read_text() == "NEWER\n"
+
+
+def test_migrate_legacy_store_noop_without_legacy(capturer, tmp_path, monkeypatch):
+    new = tmp_path / "captures" / "idegis_full.jsonl"
+    monkeypatch.setattr(capturer, "JSONL_PATH", new)
+    monkeypatch.setattr(capturer, "_LEGACY_JSONL", tmp_path / "nope.jsonl")
+    capturer._migrate_legacy_store()  # must not raise
+    assert not new.exists()
 
 
 # ── HACS integration manifest (no Home Assistant import needed) ─────────────
