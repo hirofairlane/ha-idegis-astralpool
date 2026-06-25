@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.6.10 — 2026-06-25
+
+- **Fixed: "Sal avg" and "Producción Cl avg" were blank in the Última sesión
+  panel.** The chlorinator emits salinity and production only every few hours,
+  so a filtration session often captures zero samples for them and the snapshot
+  dropped the metric entirely. Now the session snapshot falls back to the
+  last-known (carry-forward) value, flagged `carried`, and the UI shows it with
+  a "último valor conocido" hint instead of `—`.
+- **Fixed: those last-known values were lost across restarts.** Salinity/
+  production reported more than `max_history` (1000) records ago fell outside
+  the warm-up replay window, so sticky never held them. Startup now backfills
+  sticky with the last-known value of each measurement field from the full
+  persistent store.
+
+
 ## 0.6.9 — 2026-06-24
 
 - **Fixed: the vitals charts (pH / salinity / temperature / production) were

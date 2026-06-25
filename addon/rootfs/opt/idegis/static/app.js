@@ -278,12 +278,26 @@ async function refreshSummary() {
       $("ses-duration").textContent = ls.duration_s
         ? `${Math.round(ls.duration_s / 60)} min` : "—";
       $("ses-writes").textContent = ls.n_writes ?? "—";
-      const get = (k) => agg[k]?.avg !== undefined && agg[k]?.avg !== null
-        ? fmt.num(agg[k].avg, 2) : "—";
-      $("ses-ph").textContent = get("ph");
-      $("ses-salt").textContent = get("salinity");
-      $("ses-temp").textContent = get("temperature");
-      $("ses-prod").textContent = get("production_percent");
+      // A metric the session never sampled directly (salinity/production are
+      // reported only every few hours) is filled with the last-known value and
+      // flagged `carried` by the backend — show it but mark it as such.
+      const setCell = (id, k) => {
+        const a = agg[k];
+        const el = $(id);
+        const has = a && a.avg !== undefined && a.avg !== null;
+        el.textContent = has ? fmt.num(a.avg, 2) : "—";
+        if (has && a.carried) {
+          el.title = "último valor conocido (no medido en esta sesión)";
+          el.classList.add("stale");
+        } else {
+          el.removeAttribute("title");
+          el.classList.remove("stale");
+        }
+      };
+      setCell("ses-ph", "ph");
+      setCell("ses-salt", "salinity");
+      setCell("ses-temp", "temperature");
+      setCell("ses-prod", "production_percent");
       $("ses-end").textContent = ls.last_ts ? fmt.abs(ls.last_ts) : "—";
     } else {
       $("ses-status").textContent = "ninguna sesión cerrada todavía";

@@ -133,7 +133,7 @@ def test_summarise_measurements_keeps_only_measures(codec):
 # ── capturer: importable without side effects, version exposed ──────────────
 
 def test_capturer_imports_and_version(capturer):
-    assert capturer.ADDON_VERSION == "0.6.9"
+    assert capturer.ADDON_VERSION == "0.6.10"
 
 
 def test_capturer_data_dir_is_temp(capturer):
@@ -226,6 +226,54 @@ def test_closed_session_snapshot_schema(capturer):
     assert ph["n"] == 2 and ph["avg"] is not None
     assert snap["duration_s"] == pytest.approx(300.0)  # 5 min between writes
     assert snap["n_writes"] == 2
+
+
+# ── capturer: slow-metric carry-forward in the session snapshot ─────────────
+
+def test_session_snapshot_carries_slow_metrics(capturer):
+    """Salinity/production are emitted only every few hours, so a session can
+    capture zero samples for them. The snapshot must fall back to the last-known
+    (sticky) value flagged `carried`, instead of dropping the metric — which
+    rendered "Sal avg"/"Prod avg" as "—". Regression for the 2026-06-25 report.
+    """
+    st = capturer.State()
+    # Session 1: a write carrying pH (SG) + salinity (IT). Salinity enters
+    # sticky here and never appears in a write again.
+    st.ingest({"ts": "2026-06-02T10:00:00+00:00", "endpoint": "write",
+               "fields": {"SG": "Vgfb", "IT": "bgfcM"}})
+    st.force_close_session()
+    # Session 2: only pH reported across two writes — no salinity sample.
+    st.ingest({"ts": "2026-06-02T11:00:00+00:00", "endpoint": "write",
+               "fields": {"SG": "Vgfb"}})
+    st.ingest({"ts": "2026-06-02T11:05:00+00:00", "endpoint": "write",
+               "fields": {"SG": "Vgfc"}})
+    st.force_close_session()
+
+    snap = st.last_session_closed
+    assert "salinity" in snap["measurements"], "salinity dropped from session 2"
+    sal = snap["measurements"]["salinity"]
+    assert sal["carried"] is True and sal["avg"] is not None
+    # pH was really measured this session — must NOT be flagged carried.
+    assert snap["measurements"]["ph"].get("carried") is not True
+
+
+def test_backfill_sticky_from_full_store(capturer):
+    """Salinity reported >MAX_HISTORY records ago falls outside the warm replay
+    window. The backfill must scan the full store so sticky keeps the last-known
+    value (otherwise the session snapshot has nothing to carry forward)."""
+    st = capturer.State()
+    # Simulate a replay that only re-hydrated recent pH/temperature writes.
+    st.sticky_fields = {"SG": "Vgfb", "CY": "degWI"}
+    lines = [
+        # Oldest line carries salinity (IT) + production (GY); newer ones don't.
+        '{"ts":"2026-06-01T00:00:00+00:00","endpoint":"write","fields":{"IT":"bgfcM","GY":"Xaga"}}',
+        '{"ts":"2026-06-02T00:00:00+00:00","endpoint":"write","fields":{"SG":"Vgfb"}}',
+        '{"ts":"2026-06-02T01:00:00+00:00","endpoint":"read","fields":{"CI":"a"}}',
+    ]
+    capturer._backfill_sticky_measurements(lines, st)
+    assert "IT" in st.sticky_fields and "GY" in st.sticky_fields
+    carry = capturer.State._carry_from(st.sticky_fields)
+    assert "salinity" in carry and "production_percent" in carry
 
 
 # ── capturer: persistent store location + legacy migration ──────────────────

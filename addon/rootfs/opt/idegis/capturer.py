@@ -36,7 +36,7 @@ from pathlib import Path
 from typing import Any
 
 from aiohttp import ClientSession, ClientTimeout, TCPConnector, web
-from codec import decode_fields, summarise_measurements
+from codec import FIELDS_INFO, decode_fields, summarise_measurements
 
 # ---------- Configuration --------------------------------------------------
 
@@ -315,11 +315,20 @@ class State:
         if (ts - last).total_seconds() < SESSION_IDLE_TIMEOUT_S:
             return
         # Idle too long — snapshot and reset.
-        self.last_session_closed = self._snapshot_session(self.current_session)
+        self.last_session_closed = self._snapshot_session(
+            self.current_session, self._carry_from(self.sticky_fields)
+        )
         self.current_session = self._empty_session()
 
     @staticmethod
-    def _snapshot_session(s: dict[str, Any]) -> dict[str, Any]:
+    def _carry_from(sticky: dict[str, str]) -> dict[str, Any]:
+        """Last-known (carry-forward) measurement values, for session fallback."""
+        return summarise_measurements(decode_fields(sticky))
+
+    @staticmethod
+    def _snapshot_session(
+        s: dict[str, Any], carry: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         out = {
             "start_ts": s["start_ts"].isoformat() if s["start_ts"] else None,
             "last_ts": s["last_ts"].isoformat() if s["last_ts"] else None,
@@ -340,6 +349,21 @@ class State:
                 "last": agg["last"],
                 "unit": agg.get("unit"),
             }
+        # Slowly-reported metrics (salinity, production_percent) often get zero
+        # samples in a given session because the chlorinator only emits them
+        # every few hours. Rather than render "—", fall back to the last-known
+        # carry-forward value so the panel shows a number, flagged as carried.
+        if carry:
+            for name, mv in carry.items():
+                if name in out["measurements"]:
+                    continue
+                val = mv.get("value")
+                if val is None:
+                    continue
+                out["measurements"][name] = {
+                    "n": 0, "avg": val, "min": val, "max": val,
+                    "last": val, "unit": mv.get("unit"), "carried": True,
+                }
         return out
 
     def close_session_if_idle(self, now: datetime) -> None:
@@ -348,7 +372,9 @@ class State:
         if s.get("last_ts") is None or s["n_writes"] == 0:
             return
         if (now - s["last_ts"]).total_seconds() >= SESSION_IDLE_TIMEOUT_S:
-            self.last_session_closed = self._snapshot_session(s)
+            self.last_session_closed = self._snapshot_session(
+                s, self._carry_from(self.sticky_fields)
+            )
             self.current_session = self._empty_session()
 
     def force_close_session(self) -> None:
@@ -358,7 +384,9 @@ class State:
         s = self.current_session
         if s.get("last_ts") is None or s["n_writes"] == 0:
             return
-        self.last_session_closed = self._snapshot_session(s)
+        self.last_session_closed = self._snapshot_session(
+            s, self._carry_from(self.sticky_fields)
+        )
         self.current_session = self._empty_session()
 
 
@@ -458,7 +486,41 @@ def warm_from_jsonl() -> None:
             state.ingest(json.loads(line))
         except Exception:  # noqa: BLE001
             continue
+    _backfill_sticky_measurements(lines, state)
     log.info("warmed %d records from %s", len(state.history), JSONL_PATH)
+
+
+def _backfill_sticky_measurements(lines: list[str], st: State) -> None:
+    """Seed sticky with the last-known value of each measurement field from the
+    full persistent store.
+
+    Salinity and production are emitted only every few hours, so after a restart
+    they usually fall outside the MAX_HISTORY replay window and never enter
+    sticky — which left "Sal avg"/"Prod avg" blank in the session panel. Scan the
+    whole store (newest first) for any measurement code still missing."""
+    measure_codes = {c for c, i in FIELDS_INFO.items() if i.get("type") == "measure"}
+    missing = measure_codes - set(st.sticky_fields)
+    if not missing:
+        return
+    for line in reversed(lines):
+        if not missing:
+            break
+        try:
+            rec = json.loads(line)
+        except Exception:  # noqa: BLE001
+            continue
+        if rec.get("endpoint") != "write":
+            continue
+        fields = rec.get("fields") or {}
+        for code in list(missing):
+            v = fields.get(code)
+            if v:
+                st.sticky_fields[code] = v
+                try:
+                    st.sticky_field_ts[code] = datetime.fromisoformat(rec["ts"])
+                except Exception:  # noqa: BLE001
+                    pass
+                missing.discard(code)
 
 
 # ---------- HTTP proxy on port 80 ------------------------------------------
@@ -662,7 +724,9 @@ async def api_state(request: web.Request) -> web.Response:  # noqa: ARG001
         "trusted_measurements": trusted_measurements(list(state.history), now=now),
         "measurement_window_s": MEASURE_WINDOW_S,
         "measurement_flow_threshold_w": MEASURE_FLOW_THRESHOLD_W,
-        "current_session": State._snapshot_session(state.current_session),
+        "current_session": State._snapshot_session(
+            state.current_session, State._carry_from(state.sticky_fields)
+        ),
         "last_session": state.last_session_closed,
         "session_age_seconds": session_age_s,
         # Pump correlation
@@ -1409,7 +1473,7 @@ def build_proxy_app() -> web.Application:
     return app
 
 
-ADDON_VERSION = "0.6.9"
+ADDON_VERSION = "0.6.10"
 
 
 async def ingress_index(request: web.Request) -> web.Response:  # noqa: ARG001
@@ -1439,7 +1503,8 @@ async def _legacy_ingress_index(request: web.Request) -> web.Response:  # noqa: 
     measurements = summarise_measurements(decode_fields(state.sticky_fields)) or {}
     captured = len(state.history)
     last_session_snapshot = State._snapshot_session(
-        state.last_session_closed or State._empty_session()
+        state.last_session_closed or State._empty_session(),
+        State._carry_from(state.sticky_fields),
     )
 
     def _row(label: str, value: object) -> str:
