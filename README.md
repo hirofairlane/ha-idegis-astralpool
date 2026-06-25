@@ -113,7 +113,9 @@ acceptable to the user.
 │   ├── 11-codec-and-decoded-fields.md   reverse-engineered B0 codec and field semantics
 │   ├── 12-lovelace-cards.md   ready-to-paste Lovelace YAML for the exposed entities
 │   ├── 13-alerts-and-jarvis.md  two-layer alerts (HA native + Jarvis qualitative)
-│   └── 14-pool-brain.md       the closed-loop add-on (Pool Brain)
+│   ├── 14-pool-brain.md       the closed-loop add-on (Pool Brain)
+│   ├── 15-dashboard.md        the capturer's built-in web dashboard
+│   └── 16-energy-cost-integration.md  pump cost (ToU tariff + solar split) + Energy Optimizer contract
 ├── ha-packages/
 │   ├── idegis_alerts.yaml     ready-to-include HA alert pack (Telegram)
 │   └── pool_brain.yaml        companion package for the Pool Brain add-on

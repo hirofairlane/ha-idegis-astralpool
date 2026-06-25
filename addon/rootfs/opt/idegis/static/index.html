@@ -101,6 +101,7 @@
     <header class="panel-header">
       <h2>Consumo eléctrico de bombas</h2>
       <span class="muted" id="energy-price">— €/kWh</span>
+      <span class="muted" id="tariff-now"></span>
     </header>
     <div class="pump-grid">
       <div class="pump-card">
@@ -113,7 +114,12 @@
         <div class="pump-row">
           <div class="pump-cell"><div class="pcl">kWh 24 h</div><div class="pcv green" id="pump-kwh-24h">—</div></div>
           <div class="pump-cell"><div class="pcl">kWh 7 d</div><div class="pcv green" id="pump-kwh-7d">—</div></div>
-          <div class="pump-cell"><div class="pcl">€ 30 d</div><div class="pcv green" id="pump-eur-30d">—</div></div>
+          <div class="pump-cell"><div class="pcl">Coste red 30 d</div><div class="pcv green" id="pump-eur-30d">—</div></div>
+        </div>
+        <div class="pump-row">
+          <div class="pump-cell"><div class="pcl">Solar 30 d</div><div class="pcv amber" id="pump-solar-30d">—</div></div>
+          <div class="pump-cell"><div class="pcl">% Solar 30 d</div><div class="pcv amber" id="pump-solar-pct">—</div></div>
+          <div class="pump-cell"><div class="pcl">Fuente ahora</div><div class="pcv" id="pump-source">—</div></div>
         </div>
       </div>
       <div class="pump-card">
@@ -126,7 +132,12 @@
         <div class="pump-row">
           <div class="pump-cell"><div class="pcl">kWh 24 h</div><div class="pcv green" id="cleaner-kwh-24h">—</div></div>
           <div class="pump-cell"><div class="pcl">kWh 7 d</div><div class="pcv green" id="cleaner-kwh-7d">—</div></div>
-          <div class="pump-cell"><div class="pcl">€ 30 d</div><div class="pcv green" id="cleaner-eur-30d">—</div></div>
+          <div class="pump-cell"><div class="pcl">Coste red 30 d</div><div class="pcv green" id="cleaner-eur-30d">—</div></div>
+        </div>
+        <div class="pump-row">
+          <div class="pump-cell"><div class="pcl">Solar 30 d</div><div class="pcv amber" id="cleaner-solar-30d">—</div></div>
+          <div class="pump-cell"><div class="pcl">% Solar 30 d</div><div class="pcv amber" id="cleaner-solar-pct">—</div></div>
+          <div class="pump-cell"><div class="pcl">Fuente ahora</div><div class="pcv" id="cleaner-source">—</div></div>
         </div>
       </div>
     </div>

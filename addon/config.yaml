@@ -5,7 +5,7 @@ description: >-
   cloud telemetry (Fluidra Multi-Tec platform). Acts as a transparent
   HTTP reverse proxy for api.idegis.net and exposes the decoded state
   on a local JSON API the companion Home Assistant integration consumes.
-version: "0.6.10"
+version: "0.6.11"
 slug: "idegis_capturer"
 init: false
 arch:
@@ -47,6 +47,16 @@ options:
   pump_poll_interval_s: 5
   measurement_flow_threshold_w: 50.0
   measurement_window_s: 600
+  grid_power_entity: ""
+  grid_export_positive: true
+  tariff_timezone: "Europe/Madrid"
+  tariff_price_peak: 0.2234
+  tariff_price_mid: 0.1483
+  tariff_price_valley: 0.1147
+  tariff_price_export: 0.04
+  tariff_peak_hours: [10, 11, 12, 13, 18, 19, 20, 21]
+  tariff_valley_hours: [0, 1, 2, 3, 4, 5, 6, 7]
+  tariff_weekend_days: [5, 6]
 schema:
   upstream_host: str
   upstream_host_header: str
@@ -71,6 +81,16 @@ schema:
   pump_poll_interval_s: int(1,60)
   measurement_flow_threshold_w: float(0,10000)
   measurement_window_s: int(60,7200)
+  grid_power_entity: str?
+  grid_export_positive: bool
+  tariff_timezone: str
+  tariff_price_peak: float(0,5)
+  tariff_price_mid: float(0,5)
+  tariff_price_valley: float(0,5)
+  tariff_price_export: float(0,5)
+  tariff_peak_hours: [int(0,23)]
+  tariff_valley_hours: [int(0,23)]
+  tariff_weekend_days: [int(0,6)]
 host_network: false
 # Capture store lives under /share so it survives an add-on uninstall or a
 # repository/slug migration (the Supervisor wipes the private /data on those).

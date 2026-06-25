@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.6.11 — 2026-06-25
+
+- **New: electricity cost with solar attribution.** The pumps panel now shows,
+  per channel, the real grid cost (priced by time-of-use period — valle/llano/
+  punta), the energy that ran on free solar surplus (kWh + %), and the live
+  power source (☀️ solar / 🔌 red). The header shows the current tariff period
+  and price.
+  - Splits each running interval into grid vs solar using a configurable signed
+    grid-power sensor (`grid_power_entity`); solar (PV surplus) is counted as
+    0 € with its forgone export value tracked separately. No grid sensor → all
+    grid (safe fallback), still period-split.
+  - Time-of-use tariff is configurable (`tariff_*` options), defaulting to the
+    Spain 2.0TD geometry/prices used by the Energy Optimizer add-on, evaluated
+    DST-aware in the configured timezone.
+  - `GET /api/idegis/pumps` now returns a `cost` breakdown (24h/7d/30d:
+    grid_kwh, solar_kwh, grid_eur, by-period €, solar_pct), `source_now`, and a
+    `tariff` block.
+- **Docs:** `docs/16-energy-cost-integration.md` documents the model and the
+  cross-project contract with `ha-energy-optimizer` (what the capturer exposes
+  for it to consume, and the canonical price sensors the Optimizer should
+  publish so the tariff config isn't duplicated).
+
+
 ## 0.6.10 — 2026-06-25
 
 - **Fixed: "Sal avg" and "Producción Cl avg" were blank in the Última sesión

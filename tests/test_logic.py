@@ -24,10 +24,19 @@ import importlib.util
 import json
 import os
 import pathlib
+from datetime import datetime, timedelta
 
 import pytest
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
+
+
+def _dt(iso: str) -> datetime:
+    return datetime.fromisoformat(iso)
+
+
+def _td(**kw) -> timedelta:
+    return timedelta(**kw)
 _IDEGIS_SRC = ROOT / "addon" / "rootfs" / "opt" / "idegis"
 
 
@@ -133,7 +142,7 @@ def test_summarise_measurements_keeps_only_measures(codec):
 # ── capturer: importable without side effects, version exposed ──────────────
 
 def test_capturer_imports_and_version(capturer):
-    assert capturer.ADDON_VERSION == "0.6.10"
+    assert capturer.ADDON_VERSION == "0.6.11"
 
 
 def test_capturer_data_dir_is_temp(capturer):
@@ -315,6 +324,70 @@ def test_migrate_legacy_store_noop_without_legacy(capturer, tmp_path, monkeypatc
     monkeypatch.setattr(capturer, "_LEGACY_JSONL", tmp_path / "nope.jsonl")
     capturer._migrate_legacy_store()  # must not raise
     assert not new.exists()
+
+
+# ── capturer: time-of-use tariff + solar/grid cost split ────────────────────
+
+def _ph(ts_iso, w):
+    return {"last_changed": ts_iso, "state": str(w)}
+
+
+def test_tariff_period_weekday(capturer):
+    # 2026-01-15 is a Thursday. Madrid is UTC+1 in January.
+    f = capturer.tariff_period
+    assert f(_dt("2026-01-15T11:00:00+00:00")) == "peak"      # 12:00 Madrid
+    assert f(_dt("2026-01-15T03:00:00+00:00")) == "valley"    # 04:00 Madrid
+    assert f(_dt("2026-01-15T08:30:00+00:00")) == "mid"       # 09:30 Madrid
+
+
+def test_tariff_period_weekend_is_valley(capturer):
+    # 2026-01-17 is a Saturday — valley all day even at a peak hour.
+    assert capturer.tariff_period(_dt("2026-01-17T11:00:00+00:00")) == "valley"
+
+
+def test_tariff_price_matches_period(capturer):
+    assert capturer.tariff_price(_dt("2026-01-15T11:00:00+00:00")) == capturer.TARIFF["peak"]
+
+
+def test_cost_breakdown_all_grid_without_sensor(capturer):
+    """No grid sensor -> everything is grid, priced by ToU period."""
+    t0 = _dt("2026-01-15T11:00:00+00:00")  # peak
+    pump = [_ph("2026-01-15T11:00:00+00:00", 1000), _ph("2026-01-15T12:00:00+00:00", 0)]
+    b = capturer.cost_breakdown(
+        pump, [], t0 - _td(hours=1), t0 + _td(hours=2), cap_seconds=7200
+    )
+    assert b["grid_kwh"] == pytest.approx(1.0, abs=1e-6)
+    assert b["solar_kwh"] == 0.0
+    assert b["grid_eur"] == pytest.approx(capturer.TARIFF["peak"], abs=1e-4)
+    assert b["by_period_eur"]["peak"] == pytest.approx(capturer.TARIFF["peak"], abs=1e-4)
+    assert b["solar_pct"] == 0.0
+
+
+def test_cost_breakdown_solar_when_exporting(capturer):
+    """House exporting (PV surplus) at run time -> solar, 0 € grid cost."""
+    t0 = _dt("2026-01-15T11:00:00+00:00")
+    pump = [_ph("2026-01-15T11:00:00+00:00", 1000), _ph("2026-01-15T12:00:00+00:00", 0)]
+    grid = [_ph("2026-01-15T10:59:00+00:00", 2000)]  # +2000 W = exporting
+    b = capturer.cost_breakdown(
+        pump, grid, t0 - _td(hours=1), t0 + _td(hours=2), cap_seconds=7200
+    )
+    assert b["solar_kwh"] == pytest.approx(1.0, abs=1e-6)
+    assert b["grid_kwh"] == 0.0
+    assert b["grid_eur"] == 0.0
+    assert b["solar_export_value_eur"] == pytest.approx(capturer.TARIFF["export"], abs=1e-4)
+    assert b["solar_pct"] == 100.0
+
+
+def test_cost_breakdown_grid_when_importing(capturer):
+    t0 = _dt("2026-01-15T11:00:00+00:00")
+    pump = [_ph("2026-01-15T11:00:00+00:00", 1000), _ph("2026-01-15T12:00:00+00:00", 0)]
+    grid = [_ph("2026-01-15T10:59:00+00:00", -500)]  # -500 W = importing
+    b = capturer.cost_breakdown(
+        pump, grid, t0 - _td(hours=1), t0 + _td(hours=2), cap_seconds=7200
+    )
+    assert b["grid_kwh"] == pytest.approx(1.0, abs=1e-6)
+    assert b["grid_eur"] == pytest.approx(capturer.TARIFF["peak"], abs=1e-4)
+    assert b["solar_kwh"] == 0.0
 
 
 # ── HACS integration manifest (no Home Assistant import needed) ─────────────

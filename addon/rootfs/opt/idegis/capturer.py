@@ -34,6 +34,7 @@ from collections import Counter, deque
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from aiohttp import ClientSession, ClientTimeout, TCPConnector, web
 from codec import FIELDS_INFO, decode_fields, summarise_measurements
@@ -75,6 +76,22 @@ DEFAULTS = {
     # least `measurement_window_s` seconds rather than the raw last value.
     "measurement_flow_threshold_w": 50.0,
     "measurement_window_s": 600,
+    # ── Electricity cost / solar attribution ──────────────────────────────
+    # Signed grid-power sensor (same one the Energy Optimizer add-on reads).
+    # When the house is exporting (PV surplus) at the moment the pump runs, we
+    # count that energy as solar (0 € paid). Sign convention configurable.
+    "grid_power_entity": "",
+    "grid_export_positive": True,   # +ve W = exporting to grid, -ve = importing
+    # Time-of-use tariff (Spain 2.0TD geometry by default — same defaults as
+    # the Energy Optimizer add-on so the two stay consistent). Prices €/kWh.
+    "tariff_timezone": "Europe/Madrid",
+    "tariff_price_peak": 0.2234,
+    "tariff_price_mid": 0.1483,
+    "tariff_price_valley": 0.1147,
+    "tariff_price_export": 0.04,
+    "tariff_peak_hours": [10, 11, 12, 13, 18, 19, 20, 21],
+    "tariff_valley_hours": [0, 1, 2, 3, 4, 5, 6, 7],
+    "tariff_weekend_days": [5, 6],   # Sat, Sun -> valley all day
 }
 
 
@@ -123,6 +140,22 @@ PUMP_THRESHOLD_W = float(OPTS.get("pump_running_threshold_w") or 100.0)
 PUMP_POLL_S = int(OPTS.get("pump_poll_interval_s") or 5)
 MEASURE_FLOW_THRESHOLD_W = float(OPTS.get("measurement_flow_threshold_w") or 50.0)
 MEASURE_WINDOW_S = float(OPTS.get("measurement_window_s") or 600)
+
+GRID_ENTITY = OPTS.get("grid_power_entity") or ""
+GRID_EXPORT_POSITIVE = bool(
+    OPTS.get("grid_export_positive")
+    if OPTS.get("grid_export_positive") is not None else True
+)
+TARIFF = {
+    "tz": OPTS.get("tariff_timezone") or "Europe/Madrid",
+    "peak": float(OPTS.get("tariff_price_peak") or 0.2234),
+    "mid": float(OPTS.get("tariff_price_mid") or 0.1483),
+    "valley": float(OPTS.get("tariff_price_valley") or 0.1147),
+    "export": float(OPTS.get("tariff_price_export") or 0.04),
+    "peak_hours": set(OPTS.get("tariff_peak_hours") or [10, 11, 12, 13, 18, 19, 20, 21]),
+    "valley_hours": set(OPTS.get("tariff_valley_hours") or [0, 1, 2, 3, 4, 5, 6, 7]),
+    "weekend_days": set(OPTS.get("tariff_weekend_days") or [5, 6]),
+}
 
 # Codec semantic names of the fields the dashboard treats as live readings.
 MEASURE_KEYS = ("ph", "salinity", "temperature", "production_percent")
@@ -965,6 +998,126 @@ def _kwh_from_history(
     return round(kwh, 3), round(motor_s, 1)
 
 
+def tariff_period(dt: datetime, tariff: dict | None = None) -> str:
+    """Time-of-use period ('peak'|'mid'|'valley') for a UTC datetime.
+
+    Spain 2.0TD geometry by default: weekends are valley all day; on weekdays
+    the configured peak/valley hours apply and everything else is mid (llano).
+    Evaluated in the tariff's local timezone so DST is handled correctly."""
+    t = tariff or TARIFF
+    try:
+        local = dt.astimezone(ZoneInfo(t["tz"]))
+    except Exception:  # noqa: BLE001 — bad tz string -> fall back to UTC
+        local = dt
+    if local.weekday() in t["weekend_days"]:
+        return "valley"
+    h = local.hour
+    if h in t["peak_hours"]:
+        return "peak"
+    if h in t["valley_hours"]:
+        return "valley"
+    return "mid"
+
+
+def tariff_price(dt: datetime, tariff: dict | None = None) -> float:
+    """Import price (€/kWh) in force at `dt`."""
+    t = tariff or TARIFF
+    return float(t[tariff_period(dt, t)])
+
+
+def _hist_ts(rec: dict) -> datetime | None:
+    raw = rec.get("last_changed") or rec.get("last_updated")
+    if not raw:
+        return None
+    try:
+        return datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _hist_w(rec: dict) -> float | None:
+    try:
+        return float(rec.get("state"))
+    except (TypeError, ValueError):
+        return None
+
+
+def cost_breakdown(
+    pump_hist: list[dict],
+    grid_hist: list[dict],
+    start: datetime,
+    end: datetime,
+    *,
+    export_positive: bool = True,
+    tariff: dict | None = None,
+    floor_w: float = 5.0,
+    cap_seconds: float = 600.0,
+) -> dict:
+    """Split a pump's energy over [start, end] into grid vs solar and price the
+    grid part by tariff period.
+
+    For each running interval we look up the grid-power sign at its start: if the
+    house was exporting (PV surplus) the pump's draw is counted as **solar**
+    (0 € paid, but its forgone export value is tracked); otherwise it is
+    **grid**, priced at the tariff period in force. With no grid sensor wired
+    (empty grid_hist) everything counts as grid — a safe, if pessimistic,
+    fallback. The grid lookup uses the last sample at or before the interval
+    start; both series are processed in chronological order.
+    """
+    t = tariff or TARIFF
+    out = {
+        "grid_kwh": 0.0,
+        "solar_kwh": 0.0,
+        "grid_eur": 0.0,
+        "solar_export_value_eur": 0.0,
+        "by_period_eur": {"peak": 0.0, "mid": 0.0, "valley": 0.0},
+    }
+    grid = sorted(
+        ((ts, w) for r in grid_hist
+         if (ts := _hist_ts(r)) is not None and (w := _hist_w(r)) is not None),
+        key=lambda x: x[0],
+    )
+    gi = 0
+    last_gw: float | None = None
+    prev_ts: datetime | None = None
+    prev_w: float | None = None
+    for rec in pump_hist:
+        ts = _hist_ts(rec)
+        w = _hist_w(rec)
+        if prev_ts is not None and prev_w is not None and ts is not None:
+            iv_start = max(prev_ts, start)
+            iv_end = min(ts, end)
+            dt = (iv_end - iv_start).total_seconds()
+            dt = min(dt, cap_seconds)
+            if dt > 0 and prev_w > floor_w:
+                energy = prev_w * dt / 3600 / 1000  # kWh
+                while gi < len(grid) and grid[gi][0] <= iv_start:
+                    last_gw = grid[gi][1]
+                    gi += 1
+                exporting = last_gw is not None and (
+                    last_gw > 0 if export_positive else last_gw < 0
+                )
+                if exporting:
+                    out["solar_kwh"] += energy
+                    out["solar_export_value_eur"] += energy * t["export"]
+                else:
+                    period = tariff_period(iv_start, t)
+                    eur = energy * float(t[period])
+                    out["grid_kwh"] += energy
+                    out["grid_eur"] += eur
+                    out["by_period_eur"][period] += eur
+        prev_ts = ts
+        prev_w = w
+    total = out["grid_kwh"] + out["solar_kwh"]
+    out["solar_pct"] = round(100 * out["solar_kwh"] / total, 1) if total > 0 else 0.0
+    out["grid_kwh"] = round(out["grid_kwh"], 3)
+    out["solar_kwh"] = round(out["solar_kwh"], 3)
+    out["grid_eur"] = round(out["grid_eur"], 4)
+    out["solar_export_value_eur"] = round(out["solar_export_value_eur"], 4)
+    out["by_period_eur"] = {k: round(v, 4) for k, v in out["by_period_eur"].items()}
+    return out
+
+
 async def api_pumps(request: web.Request) -> web.Response:  # noqa: ARG001
     """Live + 24h/7d/30d energy use of the two pump channels.
 
@@ -978,6 +1131,23 @@ async def api_pumps(request: web.Request) -> web.Response:  # noqa: ARG001
     """
     now = datetime.now(timezone.utc)
 
+    # Shared house grid-power sensor + its 30d history, fetched once and reused
+    # for every channel's solar/grid attribution.
+    grid_hist30 = await _ha_history(GRID_ENTITY, now - timedelta(days=30), now) \
+        if GRID_ENTITY else []
+    grid_now_w: float | None = None
+    if GRID_ENTITY:
+        gstate = await _ha_state(GRID_ENTITY)
+        if gstate:
+            try:
+                grid_now_w = float(gstate.get("state"))
+            except (TypeError, ValueError):
+                grid_now_w = None
+    grid_exporting_now = (
+        None if grid_now_w is None
+        else (grid_now_w > 0 if GRID_EXPORT_POSITIVE else grid_now_w < 0)
+    )
+
     async def _channel(power_ent: str, switch_ent: str) -> dict:
         out: dict = {
             "power_entity": power_ent,
@@ -990,6 +1160,8 @@ async def api_pumps(request: web.Request) -> web.Response:  # noqa: ARG001
             "motor_hours_24h": 0.0,
             "motor_hours_7d": 0.0,
             "eur_30d": 0.0,
+            "source_now": None,
+            "cost": {},
         }
         if not power_ent:
             return out
@@ -1017,7 +1189,36 @@ async def api_pumps(request: web.Request) -> web.Response:  # noqa: ARG001
         out["kwh_24h"] = round(kwh24, 3)
         out["motor_hours_7d"] = round(motor7 / 3600, 2)
         out["motor_hours_24h"] = round(motor24 / 3600, 2)
-        out["eur_30d"] = round(kwh30 * ENERGY_PRICE_EUR_KWH, 2)
+
+        # Tariff- and solar-aware cost. Splits each running interval into grid
+        # (priced by ToU period) vs solar (free), using the house grid sensor.
+        c24 = cost_breakdown(
+            hist30, grid_hist30, now - timedelta(hours=24), now,
+            export_positive=GRID_EXPORT_POSITIVE, tariff=TARIFF,
+        )
+        c7 = cost_breakdown(
+            hist30, grid_hist30, now - timedelta(days=7), now,
+            export_positive=GRID_EXPORT_POSITIVE, tariff=TARIFF,
+        )
+        c30 = cost_breakdown(
+            hist30, grid_hist30, now - timedelta(days=30), now,
+            export_positive=GRID_EXPORT_POSITIVE, tariff=TARIFF,
+        )
+        out["cost"] = {"24h": c24, "7d": c7, "30d": c30}
+        # eur_30d now reflects the real money spent on grid energy (solar is
+        # free); falls back to flat-rate when no grid sensor is configured.
+        out["eur_30d"] = round(c30["grid_eur"], 2) if GRID_ENTITY \
+            else round(kwh30 * ENERGY_PRICE_EUR_KWH, 2)
+
+        running = (out["now_w"] or 0) > PUMP_THRESHOLD_W
+        if not running:
+            out["source_now"] = "idle"
+        elif grid_exporting_now is True:
+            out["source_now"] = "solar"
+        elif grid_exporting_now is False:
+            out["source_now"] = "grid"
+        else:
+            out["source_now"] = None  # no grid sensor -> unknown
         return out
 
     pump = await _channel(PUMP_ENTITY, PUMP_SWITCH_ENTITY)
@@ -1027,6 +1228,13 @@ async def api_pumps(request: web.Request) -> web.Response:  # noqa: ARG001
         "pump": pump,
         "cleaner": cleaner,
         "price_eur_kwh": ENERGY_PRICE_EUR_KWH,
+        "grid_sensor_configured": bool(GRID_ENTITY),
+        "tariff": {
+            "period_now": tariff_period(now, TARIFF),
+            "price_now_eur_kwh": round(tariff_price(now, TARIFF), 4),
+            "peak": TARIFF["peak"], "mid": TARIFF["mid"],
+            "valley": TARIFF["valley"], "export": TARIFF["export"],
+        },
     })
 
 
@@ -1473,7 +1681,7 @@ def build_proxy_app() -> web.Application:
     return app
 
 
-ADDON_VERSION = "0.6.10"
+ADDON_VERSION = "0.6.11"
 
 
 async def ingress_index(request: web.Request) -> web.Response:  # noqa: ARG001

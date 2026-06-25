@@ -116,6 +116,37 @@ def dashboard(tmp_path_factory):
     cap = _load_capturer(data_dir)
 
     now = datetime.now(timezone.utc)
+
+    # Fake the HA calls api_pumps makes so the cost/solar path renders without a
+    # live Supervisor. Scenario: pump running at 1100 W, house importing (grid
+    # -800 W) for the last few hours -> all grid, priced by tariff period.
+    cap.GRID_ENTITY = "sensor.grid_power"
+
+    async def _fake_state(eid):
+        if eid == cap.PUMP_ENTITY:
+            return {"state": "1100"}
+        if eid == cap.PUMP_SWITCH_ENTITY:
+            return {"state": "on"}
+        if eid == cap.GRID_ENTITY:
+            return {"state": "-800"}  # importing (export_positive convention)
+        return None
+
+    async def _fake_history(eid, start, end=None):
+        if eid == cap.PUMP_ENTITY:
+            # 12 samples 10 min apart at 1100 W, then off -> ~2.2 kWh of grid use.
+            recs = []
+            for i in range(12):
+                t = now - timedelta(minutes=120 - i * 10)
+                recs.append({"last_changed": t.isoformat(), "state": "1100"})
+            recs.append({"last_changed": now.isoformat(), "state": "0"})
+            return recs
+        if eid == cap.GRID_ENTITY:
+            return [{"last_changed": (now - timedelta(hours=3)).isoformat(),
+                     "state": "-800"}]
+        return []
+
+    cap._ha_state = _fake_state
+    cap._ha_history = _fake_history
     records = []
     for minutes_ago, ph, salt, temp, prod in _SAMPLES:
         ts = (now - timedelta(minutes=minutes_ago)).isoformat()
@@ -286,3 +317,29 @@ def test_no_failed_api_responses(page):
     """No API endpoint may return >= 400. Regression for /state 500ing on a
     history record without the optional `path` field, which blanked the tiles."""
     assert not page.bad_responses, f"failed responses: {page.bad_responses}"
+
+
+# ── Electricity cost / solar attribution rendering ──────────────────────────
+
+def test_tariff_indicator_renders(page):
+    txt = page.eval_on_selector("#tariff-now", "el => el.textContent")
+    assert txt and "€/kWh" in txt, f"tariff indicator empty -> {txt!r}"
+
+
+def test_pump_grid_cost_renders(page):
+    eur = page.eval_on_selector("#pump-eur-30d", "el => el.textContent")
+    assert eur and "€" in eur and any(c.isdigit() for c in eur), f"grid cost -> {eur!r}"
+
+
+def test_pump_source_is_grid_when_importing(page):
+    src = page.eval_on_selector("#pump-source", "el => el.textContent")
+    assert src and "red" in src.lower(), f"source should be grid -> {src!r}"
+
+
+def test_pump_solar_split_present(page):
+    # House was importing the whole time -> 0 solar, but the cells must render
+    # numbers (grid sensor IS configured in this scenario), not "—".
+    solar = page.eval_on_selector("#pump-solar-30d", "el => el.textContent")
+    pct = page.eval_on_selector("#pump-solar-pct", "el => el.textContent")
+    assert solar and any(c.isdigit() for c in solar), f"solar kWh -> {solar!r}"
+    assert pct and any(c.isdigit() for c in pct), f"solar pct -> {pct!r}"

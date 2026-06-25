@@ -364,6 +364,20 @@ async function refreshPumps() {
     const price = p.price_eur_kwh;
     $("energy-price").textContent = `${fmt.num(price, 2)} €/kWh`;
 
+    // Current tariff period (valle/llano/punta) + price in force right now.
+    const t = p.tariff;
+    const periodLabel = { peak: "punta", mid: "llano", valley: "valle" };
+    if (t && t.period_now) {
+      $("tariff-now").textContent =
+        `· ${periodLabel[t.period_now] || t.period_now} ${fmt.num(t.price_now_eur_kwh, 2)} €/kWh`;
+    } else {
+      $("tariff-now").textContent = "";
+    }
+
+    const SRC = {
+      solar: "☀️ solar", grid: "🔌 red", idle: "—",
+    };
+
     function fill(prefix, ch) {
       $(`${prefix}-now-w`).innerHTML = fmt.withUnit(ch.now_w, "W");
       $(`${prefix}-motor-24h`).innerHTML = fmt.withUnit(ch.motor_hours_24h, "h");
@@ -371,6 +385,22 @@ async function refreshPumps() {
       $(`${prefix}-kwh-24h`).textContent = fmt.num(ch.kwh_24h, 2);
       $(`${prefix}-kwh-7d`).textContent = fmt.num(ch.kwh_7d, 2);
       $(`${prefix}-eur-30d`).textContent = `${fmt.num(ch.eur_30d, 2)} €`;
+
+      // Solar split (only meaningful when a grid sensor is wired).
+      const c30 = (ch.cost && ch.cost["30d"]) || null;
+      const solarEl = $(`${prefix}-solar-30d`);
+      const pctEl = $(`${prefix}-solar-pct`);
+      if (c30 && p.grid_sensor_configured) {
+        solarEl.innerHTML = fmt.withUnit(c30.solar_kwh, "kWh");
+        pctEl.innerHTML = fmt.withUnit(c30.solar_pct, "%");
+      } else {
+        solarEl.textContent = "—";
+        pctEl.textContent = "—";
+      }
+
+      const srcEl = $(`${prefix}-source`);
+      srcEl.textContent = ch.source_now ? (SRC[ch.source_now] || "—") : "—";
+
       const stateEl = $(`${prefix}-state`);
       if (ch.switch === "on") {
         stateEl.textContent = "EN MARCHA";
