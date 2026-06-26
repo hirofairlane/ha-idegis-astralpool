@@ -1,13 +1,14 @@
 <!doctype html>
-<html lang="es">
+<html lang="{{LANG}}">
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
   <meta http-equiv="Pragma" content="no-cache"/>
   <meta http-equiv="Expires" content="0"/>
-  <title>Idegis Capturer</title>
+  <title data-i18n="title">Idegis Capturer</title>
   <link rel="stylesheet" href="static/style.css?v={{VERSION}}"/>
+  <script>window.__HA_LANG__ = "{{LANG}}";</script>
 </head>
 <body>
 
@@ -17,8 +18,8 @@
     <h1>IDEGIS <span class="thin">capturer</span></h1>
   </div>
   <div class="topbar-right">
-    <span class="online-pill" id="online-pill">— offline —</span>
-    <span class="muted" id="last-update">cargando…</span>
+    <span class="online-pill" id="online-pill">—</span>
+    <span class="muted" id="last-update" data-i18n="loading">cargando…</span>
   </div>
 </header>
 
@@ -27,22 +28,22 @@
   <!-- Summary tiles -->
   <section class="tiles">
     <div class="tile">
-      <div class="tile-label">Último encendido</div>
+      <div class="tile-label" data-i18n="tile_last_start">Último encendido</div>
       <div class="tile-value" id="last-start-rel">—</div>
       <div class="tile-sub" id="last-start-abs">—</div>
     </div>
     <div class="tile">
-      <div class="tile-label">Horas filtración · 7 d</div>
+      <div class="tile-label" data-i18n="tile_filter_hours">Horas filtración · 7 d</div>
       <div class="tile-value" id="hours-week">— <span class="unit">h</span></div>
-      <div class="tile-sub" id="hours-month">— h · 30 d</div>
+      <div class="tile-sub" id="hours-month">—</div>
     </div>
     <div class="tile">
-      <div class="tile-label">Polling rate (5 min)</div>
+      <div class="tile-label" data-i18n="tile_polling">Polling rate (5 min)</div>
       <div class="tile-value" id="polling-rate">— <span class="unit">req/min</span></div>
       <div class="tile-sub" id="seconds-since">—</div>
     </div>
     <div class="tile">
-      <div class="tile-label">Capturas</div>
+      <div class="tile-label" data-i18n="tile_captures">Capturas</div>
       <div class="tile-value" id="captured">—</div>
       <div class="tile-sub" id="rw-counts">R: — · W: —</div>
     </div>
@@ -51,7 +52,7 @@
   <!-- Vital signs -->
   <section class="panel">
     <header class="panel-header">
-      <h2>Constantes vitales</h2>
+      <h2 data-i18n="vitals_title">Constantes vitales</h2>
       <div class="period-pills">
         <button class="pill active" data-hours="24">24 h</button>
         <button class="pill" data-hours="72">3 d</button>
@@ -61,22 +62,22 @@
     </header>
     <div class="grid-2 charts">
       <div class="chart-card">
-        <div class="chart-title">pH <span class="chart-band">(banda TFP 7.2 – 7.8)</span></div>
+        <div class="chart-title">pH <span class="chart-band" data-i18n="vital_ph_band">(banda TFP 7.2 – 7.8)</span></div>
         <div class="chart-value" id="ph-now">—</div>
         <svg class="chart" id="chart-ph" viewBox="0 0 600 200" preserveAspectRatio="none"></svg>
       </div>
       <div class="chart-card">
-        <div class="chart-title">Salinidad <span class="chart-band">(low-salt 1.5 – 3.0 g/L)</span></div>
+        <div class="chart-title"><span data-i18n="vital_salt">Salinidad</span> <span class="chart-band" data-i18n="vital_salt_band">(low-salt 1.5 – 3.0 g/L)</span></div>
         <div class="chart-value" id="salt-now">—</div>
         <svg class="chart" id="chart-salt" viewBox="0 0 600 200" preserveAspectRatio="none"></svg>
       </div>
       <div class="chart-card">
-        <div class="chart-title">Temperatura <span class="chart-band">(óptimo 20 – 32 °C)</span></div>
+        <div class="chart-title"><span data-i18n="vital_temp">Temperatura</span> <span class="chart-band" data-i18n="vital_temp_band">(óptimo 20 – 32 °C)</span></div>
         <div class="chart-value" id="temp-now">—</div>
         <svg class="chart" id="chart-temp" viewBox="0 0 600 200" preserveAspectRatio="none"></svg>
       </div>
       <div class="chart-card">
-        <div class="chart-title">Producción Cl <span class="chart-band">(saturado &gt; 95 %)</span></div>
+        <div class="chart-title"><span data-i18n="vital_prod">Producción Cl</span> <span class="chart-band" data-i18n="vital_prod_band">(saturado &gt; 95 %)</span></div>
         <div class="chart-value" id="prod-now">—</div>
         <svg class="chart" id="chart-prod" viewBox="0 0 600 200" preserveAspectRatio="none"></svg>
       </div>
@@ -86,58 +87,58 @@
   <!-- Filter activity -->
   <section class="panel">
     <header class="panel-header">
-      <h2>Actividad de la depuradora</h2>
-      <span class="muted">últimos 30 días</span>
+      <h2 data-i18n="activity_title">Actividad de la depuradora</h2>
+      <span class="muted" data-i18n="activity_sub">últimos 30 días</span>
     </header>
     <svg class="chart bars" id="chart-activity" viewBox="0 0 900 220" preserveAspectRatio="none"></svg>
     <div class="legend">
-      <span class="legend-item"><span class="swatch swatch-bar"></span>Minutos activa</span>
-      <span class="legend-item"><span class="swatch swatch-marker"></span>Nº arranques</span>
+      <span class="legend-item"><span class="swatch swatch-bar"></span><span data-i18n="legend_minutes">Minutos activa</span></span>
+      <span class="legend-item"><span class="swatch swatch-marker"></span><span data-i18n="legend_starts">Nº arranques</span></span>
     </div>
   </section>
 
   <!-- Pumps energy -->
   <section class="panel">
     <header class="panel-header">
-      <h2>Consumo eléctrico de bombas</h2>
+      <h2 data-i18n="pumps_title">Consumo eléctrico de bombas</h2>
       <span class="muted" id="energy-price">— €/kWh</span>
       <span class="muted" id="tariff-now"></span>
     </header>
     <div class="pump-grid">
       <div class="pump-card">
-        <h3>Depuradora <span class="pump-state idle" id="pump-state">—</span></h3>
+        <h3><span data-i18n="pump_filter">Depuradora</span> <span class="pump-state idle" id="pump-state">—</span></h3>
         <div class="pump-row">
-          <div class="pump-cell"><div class="pcl">Ahora</div><div class="pcv" id="pump-now-w">— W</div></div>
-          <div class="pump-cell"><div class="pcl">Motor 24 h</div><div class="pcv amber" id="pump-motor-24h">— h</div></div>
-          <div class="pump-cell"><div class="pcl">Motor 7 d</div><div class="pcv amber" id="pump-motor-7d">— h</div></div>
+          <div class="pump-cell"><div class="pcl" data-i18n="now">Ahora</div><div class="pcv" id="pump-now-w">— W</div></div>
+          <div class="pump-cell"><div class="pcl" data-i18n="motor_24h">Motor 24 h</div><div class="pcv amber" id="pump-motor-24h">— h</div></div>
+          <div class="pump-cell"><div class="pcl" data-i18n="motor_7d">Motor 7 d</div><div class="pcv amber" id="pump-motor-7d">— h</div></div>
         </div>
         <div class="pump-row">
           <div class="pump-cell"><div class="pcl">kWh 24 h</div><div class="pcv green" id="pump-kwh-24h">—</div></div>
           <div class="pump-cell"><div class="pcl">kWh 7 d</div><div class="pcv green" id="pump-kwh-7d">—</div></div>
-          <div class="pump-cell"><div class="pcl">Coste red 30 d</div><div class="pcv green" id="pump-eur-30d">—</div></div>
+          <div class="pump-cell"><div class="pcl" data-i18n="grid_cost_30d">Coste red 30 d</div><div class="pcv green" id="pump-eur-30d">—</div></div>
         </div>
         <div class="pump-row">
-          <div class="pump-cell"><div class="pcl">Solar 30 d</div><div class="pcv amber" id="pump-solar-30d">—</div></div>
-          <div class="pump-cell"><div class="pcl">% Solar 30 d</div><div class="pcv amber" id="pump-solar-pct">—</div></div>
-          <div class="pump-cell"><div class="pcl">Fuente ahora</div><div class="pcv" id="pump-source">—</div></div>
+          <div class="pump-cell"><div class="pcl" data-i18n="solar_30d">Solar 30 d</div><div class="pcv amber" id="pump-solar-30d">—</div></div>
+          <div class="pump-cell"><div class="pcl" data-i18n="solar_pct_30d">% Solar 30 d</div><div class="pcv amber" id="pump-solar-pct">—</div></div>
+          <div class="pump-cell"><div class="pcl" data-i18n="source_now">Fuente ahora</div><div class="pcv" id="pump-source">—</div></div>
         </div>
       </div>
       <div class="pump-card">
-        <h3>Limpiafondos <span class="pump-state idle" id="cleaner-state">—</span></h3>
+        <h3><span data-i18n="pump_cleaner">Limpiafondos</span> <span class="pump-state idle" id="cleaner-state">—</span></h3>
         <div class="pump-row">
-          <div class="pump-cell"><div class="pcl">Ahora</div><div class="pcv" id="cleaner-now-w">— W</div></div>
-          <div class="pump-cell"><div class="pcl">Motor 24 h</div><div class="pcv amber" id="cleaner-motor-24h">— h</div></div>
-          <div class="pump-cell"><div class="pcl">Motor 7 d</div><div class="pcv amber" id="cleaner-motor-7d">— h</div></div>
+          <div class="pump-cell"><div class="pcl" data-i18n="now">Ahora</div><div class="pcv" id="cleaner-now-w">— W</div></div>
+          <div class="pump-cell"><div class="pcl" data-i18n="motor_24h">Motor 24 h</div><div class="pcv amber" id="cleaner-motor-24h">— h</div></div>
+          <div class="pump-cell"><div class="pcl" data-i18n="motor_7d">Motor 7 d</div><div class="pcv amber" id="cleaner-motor-7d">— h</div></div>
         </div>
         <div class="pump-row">
           <div class="pump-cell"><div class="pcl">kWh 24 h</div><div class="pcv green" id="cleaner-kwh-24h">—</div></div>
           <div class="pump-cell"><div class="pcl">kWh 7 d</div><div class="pcv green" id="cleaner-kwh-7d">—</div></div>
-          <div class="pump-cell"><div class="pcl">Coste red 30 d</div><div class="pcv green" id="cleaner-eur-30d">—</div></div>
+          <div class="pump-cell"><div class="pcl" data-i18n="grid_cost_30d">Coste red 30 d</div><div class="pcv green" id="cleaner-eur-30d">—</div></div>
         </div>
         <div class="pump-row">
-          <div class="pump-cell"><div class="pcl">Solar 30 d</div><div class="pcv amber" id="cleaner-solar-30d">—</div></div>
-          <div class="pump-cell"><div class="pcl">% Solar 30 d</div><div class="pcv amber" id="cleaner-solar-pct">—</div></div>
-          <div class="pump-cell"><div class="pcl">Fuente ahora</div><div class="pcv" id="cleaner-source">—</div></div>
+          <div class="pump-cell"><div class="pcl" data-i18n="solar_30d">Solar 30 d</div><div class="pcv amber" id="cleaner-solar-30d">—</div></div>
+          <div class="pump-cell"><div class="pcl" data-i18n="solar_pct_30d">% Solar 30 d</div><div class="pcv amber" id="cleaner-solar-pct">—</div></div>
+          <div class="pump-cell"><div class="pcl" data-i18n="source_now">Fuente ahora</div><div class="pcv" id="cleaner-source">—</div></div>
         </div>
       </div>
     </div>
@@ -146,23 +147,23 @@
   <!-- Recommendation -->
   <section class="panel">
     <header class="panel-header">
-      <h2>Recomendación de filtración</h2>
-      <span class="muted" id="reco-meta">— L · — m³/h · célula — g/h</span>
+      <h2 data-i18n="reco_title">Recomendación de filtración</h2>
+      <span class="muted" id="reco-meta">—</span>
     </header>
     <div class="reco">
       <div class="reco-side">
-        <div class="rl">Hoy</div>
+        <div class="rl" data-i18n="today">Hoy</div>
         <div class="rv" id="reco-today">— min</div>
-        <div class="rs"><span id="reco-real-today">—</span> reales · <span id="reco-cov-today">—</span> cubierto</div>
+        <div class="rs"><span id="reco-real-today">—</span> <span data-i18n="real">reales</span> · <span id="reco-cov-today">—</span> <span data-i18n="covered">cubierto</span></div>
         <div class="reco-bar"><div class="reco-bar-fill" id="reco-bar-today"></div></div>
         <div class="reco-meta" id="reco-driver">—</div>
       </div>
       <div class="reco-side">
-        <div class="rl">Semana</div>
+        <div class="rl" data-i18n="week">Semana</div>
         <div class="rv" id="reco-week">— min</div>
-        <div class="rs"><span id="reco-real-week">—</span> reales · <span id="reco-cov-week">—</span> cubierto</div>
+        <div class="rs"><span id="reco-real-week">—</span> <span data-i18n="real">reales</span> · <span id="reco-cov-week">—</span> <span data-i18n="covered">cubierto</span></div>
         <div class="reco-bar"><div class="reco-bar-fill" id="reco-bar-week"></div></div>
-        <div class="reco-meta">7 días al ritmo recomendado de hoy.</div>
+        <div class="reco-meta" data-i18n="reco_week_note">7 días al ritmo recomendado de hoy.</div>
       </div>
     </div>
     <div class="reco-formula" id="reco-formula"></div>
@@ -171,24 +172,24 @@
   <!-- Last session -->
   <section class="panel">
     <header class="panel-header">
-      <h2>Última sesión</h2>
+      <h2 data-i18n="session_title">Última sesión</h2>
     </header>
     <div class="kv-table" id="session-table">
-      <div class="kv"><span class="k">Estado</span><span class="v" id="ses-status">—</span></div>
-      <div class="kv"><span class="k">Duración</span><span class="v" id="ses-duration">—</span></div>
+      <div class="kv"><span class="k" data-i18n="ses_status">Estado</span><span class="v" id="ses-status">—</span></div>
+      <div class="kv"><span class="k" data-i18n="ses_duration">Duración</span><span class="v" id="ses-duration">—</span></div>
       <div class="kv"><span class="k">Writes</span><span class="v" id="ses-writes">—</span></div>
-      <div class="kv"><span class="k">pH avg</span><span class="v" id="ses-ph">—</span></div>
-      <div class="kv"><span class="k">Sal avg</span><span class="v" id="ses-salt">—</span></div>
-      <div class="kv"><span class="k">Temp avg</span><span class="v" id="ses-temp">—</span></div>
-      <div class="kv"><span class="k">Prod avg</span><span class="v" id="ses-prod">—</span></div>
-      <div class="kv"><span class="k">Cierre</span><span class="v" id="ses-end">—</span></div>
+      <div class="kv"><span class="k" data-i18n="ses_ph">pH avg</span><span class="v" id="ses-ph">—</span></div>
+      <div class="kv"><span class="k" data-i18n="ses_salt">Sal avg</span><span class="v" id="ses-salt">—</span></div>
+      <div class="kv"><span class="k" data-i18n="ses_temp">Temp avg</span><span class="v" id="ses-temp">—</span></div>
+      <div class="kv"><span class="k" data-i18n="ses_prod">Prod avg</span><span class="v" id="ses-prod">—</span></div>
+      <div class="kv"><span class="k" data-i18n="ses_end">Cierre</span><span class="v" id="ses-end">—</span></div>
     </div>
   </section>
 
   <footer class="footer">
-    <span>Idegis / AstralPool cloud capturer ·
+    <span><span data-i18n="footer_tagline">Idegis / AstralPool cloud capturer</span> ·
       <a href="https://www.troublefreepool.com/blog/pool-school/" target="_blank">TFP Pool School</a> ·
-      <a href="https://github.com/hirofairlane/ha-idegis-astralpool" target="_blank">repo</a>
+      <a href="https://github.com/hirofairlane/ha-idegis-astralpool" target="_blank" data-i18n="footer_repo">repo</a>
     </span>
   </footer>
 

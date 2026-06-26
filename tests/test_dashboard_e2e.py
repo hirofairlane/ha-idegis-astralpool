@@ -304,7 +304,7 @@ def test_last_session_panel_is_populated(page):
     panel; now asserted at the render layer too.
     """
     status = page.eval_on_selector("#ses-status", "el => el.textContent")
-    assert status and "cerrada" in status, f"session not closed -> {status!r}"
+    assert status and "closed" in status, f"session not closed -> {status!r}"
     ph = page.eval_on_selector("#ses-ph", "el => el.textContent")
     assert ph and any(c.isdigit() for c in ph), f"session pH avg empty -> {ph!r}"
 
@@ -333,7 +333,7 @@ def test_pump_grid_cost_renders(page):
 
 def test_pump_source_is_grid_when_importing(page):
     src = page.eval_on_selector("#pump-source", "el => el.textContent")
-    assert src and "red" in src.lower(), f"source should be grid -> {src!r}"
+    assert src and "grid" in src.lower(), f"source should be grid -> {src!r}"
 
 
 def test_pump_solar_split_present(page):
@@ -343,3 +343,23 @@ def test_pump_solar_split_present(page):
     pct = page.eval_on_selector("#pump-solar-pct", "el => el.textContent")
     assert solar and any(c.isdigit() for c in solar), f"solar kWh -> {solar!r}"
     assert pct and any(c.isdigit() for c in pct), f"solar pct -> {pct!r}"
+
+
+# ── i18n: language follows HA install, with ?lang= override ──────────────────
+
+def test_default_ui_is_english(page):
+    txt = page.eval_on_selector('[data-i18n="vitals_title"]', "el => el.textContent")
+    assert txt == "Vital signs", f"default should be English -> {txt!r}"
+
+
+def test_spanish_via_lang_param(page, dashboard):
+    """?lang=es forces Spanish even when the HA install language is English.
+
+    Reuses the module page (defined last so the navigation doesn't disturb the
+    English-default assertions above)."""
+    page.goto(dashboard + "?lang=es", wait_until="networkidle")
+    page.wait_for_selector('[data-i18n="vitals_title"]')
+    vitals = page.eval_on_selector('[data-i18n="vitals_title"]', "el => el.textContent")
+    session = page.eval_on_selector('[data-i18n="session_title"]', "el => el.textContent")
+    assert vitals == "Constantes vitales", f"-> {vitals!r}"
+    assert session == "Última sesión", f"-> {session!r}"

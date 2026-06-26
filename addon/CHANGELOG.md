@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.6.12 — 2026-06-26
+
+- **New: the dashboard is now multilingual (English + Spanish).** The UI
+  language follows the **Home Assistant install language** (read from core
+  config and injected on render), with a `?lang=` URL override and the browser
+  locale as fallback; English is the default. All labels, tooltips, the
+  recommendation formula, session panel and cost/source strings are
+  translated. New languages are a matter of adding one dictionary entry.
+
+
 ## 0.6.11 — 2026-06-25
 
 - **New: electricity cost with solar attribution.** The pumps panel now shows,

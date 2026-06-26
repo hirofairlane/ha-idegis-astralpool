@@ -142,7 +142,7 @@ def test_summarise_measurements_keeps_only_measures(codec):
 # ── capturer: importable without side effects, version exposed ──────────────
 
 def test_capturer_imports_and_version(capturer):
-    assert capturer.ADDON_VERSION == "0.6.11"
+    assert capturer.ADDON_VERSION == "0.6.12"
 
 
 def test_capturer_data_dir_is_temp(capturer):

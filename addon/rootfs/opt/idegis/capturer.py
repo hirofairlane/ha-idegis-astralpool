@@ -923,6 +923,35 @@ async def _ha_state(entity_id: str) -> dict | None:
     return None
 
 
+_HA_LANG_CACHE: dict[str, str | None] = {"lang": None}
+
+
+async def _ha_language() -> str:
+    """The HA installation language (e.g. 'en', 'es') from core config, cached.
+
+    Drives the dashboard's UI language so it follows the HA install. Falls back
+    to 'en' when the Supervisor API is unavailable (the frontend then also
+    honours ?lang= and the browser locale)."""
+    if _HA_LANG_CACHE["lang"]:
+        return _HA_LANG_CACHE["lang"]
+    lang = "en"
+    if SUPERVISOR_TOKEN:
+        try:
+            async with ClientSession() as s:
+                async with s.get(
+                    f"{HASS_API}/config",
+                    headers={"Authorization": f"Bearer {SUPERVISOR_TOKEN}"},
+                    timeout=ClientTimeout(total=5),
+                ) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        lang = (data.get("language") or "en").split("-")[0]
+        except Exception as exc:  # noqa: BLE001
+            log.debug("HA language lookup failed: %s", exc)
+    _HA_LANG_CACHE["lang"] = lang
+    return lang
+
+
 async def _ha_history(
     entity_id: str,
     start: datetime,
@@ -1681,7 +1710,7 @@ def build_proxy_app() -> web.Application:
     return app
 
 
-ADDON_VERSION = "0.6.11"
+ADDON_VERSION = "0.6.12"
 
 
 async def ingress_index(request: web.Request) -> web.Response:  # noqa: ARG001
@@ -1692,7 +1721,10 @@ async def ingress_index(request: web.Request) -> web.Response:  # noqa: ARG001
     the legacy inline page if the static dir is missing."""
     idx = STATIC_DIR / "index.html"
     if idx.exists():
-        html = idx.read_text().replace("{{VERSION}}", ADDON_VERSION)
+        lang = await _ha_language()
+        html = (idx.read_text()
+                .replace("{{VERSION}}", ADDON_VERSION)
+                .replace("{{LANG}}", lang))
         return web.Response(text=html, content_type="text/html",
                             headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
     return await _legacy_ingress_index(request)
