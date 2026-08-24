@@ -16,7 +16,7 @@ TCP port, can run nginx + Python + a custom UI, and is fully distributable
 via the Add-on Store.
 
 This mirrors the architecture of the user's own
-[`ha-energy-optimizer`](https://github.com/hirofairlane/ha-energy-optimizer)
+[`ha-energy-optimizer`](https://github.com/onemanfoundry/ha-energy-optimizer)
 add-on.
 
 ## Layout

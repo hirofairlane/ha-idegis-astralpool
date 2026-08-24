@@ -4,7 +4,7 @@ The capturer add-on estimates **how much the pool pumps cost to run**, splitting
 consumption into **grid** energy (priced by a time-of-use tariff) and **solar**
 energy (consumed from PV surplus, counted as free). This document describes the
 model, the configuration, and the **contract** for sharing data with the
-companion [`ha-energy-optimizer`](https://github.com/hirofairlane/ha-energy-optimizer)
+companion [`ha-energy-optimizer`](https://github.com/onemanfoundry/ha-energy-optimizer)
 add-on.
 
 ## Cost model
